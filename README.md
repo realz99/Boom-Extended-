@@ -5,7 +5,11 @@ improved Athenas Boom for rookies
 
 Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b18 · 99,838 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b19 · 99,793 / 100,256 compiled tokens
+
+## Build b19 — the standing C2 drives the plan
+
+- While the latest confirmed C2 stands, its plan (E / SL / TPs) shows in the table and its entry line runs to price on the chart — from the moment it closes (C2 ✓) until it is invalidated or replaced. Before, on the C2 ✓ bar the chart could still extend the previous formation's CISD (e.g. a BUY CISD while the table showed a new bearish C2).
 
 ## Build b18 — one entry, trade direction fixed
 

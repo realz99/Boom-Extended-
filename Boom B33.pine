@@ -3,7 +3,7 @@
 
 //@version=6
 
-// Boom° B33# · build b18 (rebased on Boom° v2)
+// Boom° B33# · build b19 (rebased on Boom° v2)
 indicator('Boom° B33#', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 import Gregorius_XV/GXVAssetCorrelationUtils/1 as AC
 import Gregorius_XV/GXVUtils/12 as QTU
@@ -3555,7 +3555,9 @@ while seq_c2H.size() > 10
 
 // ── [SSOT] sequence state: one definition each, read by the panel, chart, table, lanes, alerts, ledger, trade ──
 // seq_ci   : the latest confirmed C2's model candle (model TF = sequence TF), -1 = none on the panel
-// seq_c2Ok : that C2 still stands (v2: C3–C5 taking its protected extreme kills it until the next C2)
+// seq_c2Live: the latest confirmed C2 stands (v2: C3–C5 taking its protected extreme kills it until the
+//            next C2; bias filter): the panel's Confirmed C2, the plan on show, the chart's current CISD
+// seq_c2Ok : it stands and the candle on the chart works it (lanes / trade / FVG bounce act on it)
 // seq_go   : the lanes may arm / enter (C3-only option, bias filter)
 // seq_act  : the setup is tradeable now (C3 / C4) and has its entry E
 int seq_ci = -1
@@ -3564,7 +3566,8 @@ if not na(seq_c2T)
         if c.o_time == seq_c2T
             seq_ci := i
             break
-bool seq_c2Ok = seq_dbias != 0 and seq_dbias == seq_bias and not seq_c2Dead   // + the candle's C2 is the plan's C2
+bool seq_c2Live = seq_bias != 0 and not seq_c2Dead and BiasOk(seq_bias)
+bool seq_c2Ok   = seq_c2Live and seq_dbias == seq_bias   // + the candle's C2 is the plan's C2
 bool seq_go   = not seq_classic and not seq_hi and seq_c2Ok and (not seq_c3_only_input or seq_dcnum == 3) and BiasOk(seq_dbias)
 bool seq_act  = seq_c2Ok and (seq_dcnum == 3 or seq_dcnum == 4) and not na(seq_E)
 // the C2's plan and confluence text, once per bar (ledger + alerts)
@@ -3575,7 +3578,7 @@ string seq_tagT  = SeqTags(seq_scF, seq_ci)
 // Confirmed: that C2 while its extreme holds, else (invalidated) the live sweep; Live: the live sweep.
 if (barstate.islast or barstate.isrealtime) and valid_htf and c_lbl_panel and settings.model_on_panel and not settings.hide_setups
     int ci = -1
-    if seq_bias != 0 and not seq_c2Dead and BiasOk(seq_bias)
+    if seq_c2Live
         ci := seq_ci
     bool live = not pnl_clbl_conf or seq_c2Dead
     if live or ci >= 0
@@ -3725,8 +3728,8 @@ else if tr_on
         if nT > 0 and tr_tp >= nT
             tr_on := false
 
-// [SSOT] the plan on show (table E / SL / TP rows and the chart entry line): tradeable now, or in its trade
-bool  seq_planOn = (seq_act or tr_on) and not na(seq_E)
+// [SSOT] the plan on show (table E / SL / TP rows and the chart entry line)
+bool  seq_planOn = (seq_c2Live or tr_on) and not na(seq_E)   // the standing C2's plan, or its trade's
 // [SSOT] the active entry, shown once (table E row + chart line): the C2's CISD level (the limit)
 // until a lane fills, then the fill. TPs stay the C2 leg's projections; R is measured from the fill.
 float seq_EE  = tr_on ? tr_E : seq_E
@@ -3857,7 +3860,7 @@ method DrawSetups(CandleSet cs) =>
         li := best.htf_candle_idx
         lb := best.is_bullish
     // [SSOT] while the table's C2 stands and the chart engine has that formation, it is the one shown
-    if seq_c2Ok and seq_ci >= 0 and seq_ci < cs.candles.size()
+    if seq_c2Live and seq_ci >= 0 and seq_ci < cs.candles.size()
         int  o2  = cs.candles.get(seq_ci).o_idx
         bool b2  = seq_bias == 1
         bool hit = b2 ? cs.has_live_bullish and cs.live_bullish.htf_candle_idx == o2 : cs.has_live_bearish and cs.live_bearish.htf_candle_idx == o2
