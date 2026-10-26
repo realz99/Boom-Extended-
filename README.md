@@ -5,9 +5,16 @@ improved Athenas Boom for rookies
 
 Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b14 · 99,696 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b15 · 99,875 / 100,256 compiled tokens
 
-## What's new in this update (build b14)
+## Build b15 — single source of truth
+
+- **One entry everywhere:** E = the C2's CISD level in the table, on the chart line, in the SETUP alert, the ledger and the TP math. The lane fill shows on the EXEC row (`▼ IN 4011.6`). Prices keep 2 decimals, so table and chart read the same number.
+- **An invalidated C2 stays dead:** once C3–C5 takes its protected extreme, its lanes, entries, trade, FVG bounce and plan rows stay off until the next C2 (before, they could re-open on the next candle when "C3 only" was off).
+- **The table's C2 drives the chart:** its C2 tag shows the table's own score; "Latest Formation Only" highlights the table's C2 while it stands; the panel's Confirmed C2 is the same candle.
+- **One gate for the lanes:** table lane rows, lane alerts, ledger and trade all use the same rule (C3-only option, bias filter). EXEC shows BIAS FILTER when the bias filter blocks the side.
+
+## Build b14
 
 - **Rebased on the author's Boom° v2.** Every v2 change is in: panel C-Labels Live / Confirmed with the ● dot on a C2 the table confirmed, lanes fed from their entry-TF candles (no 1m data needed; `--` when a step has no data), POI zones built from the chart's bars, C3–C5 that takes a confirmed C2's extreme invalidates it.
 - **Panel C-Labels default to Confirmed** (the CISD gate): panel, table and chart entry show the same C2.
