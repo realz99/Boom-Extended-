@@ -3,7 +3,7 @@
 
 //@version=6
 
-// Boom° B33# · build b20 (rebased on Boom° v2)
+// Boom° B33# · build b21 (rebased on Boom° v2)
 indicator('Boom° B33#', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 import Gregorius_XV/GXVAssetCorrelationUtils/1 as AC
 import Gregorius_XV/GXVUtils/12 as QTU
@@ -4009,13 +4009,8 @@ color FILLC = #010203
 SeqStatus(bool prevDone, bool done, bool ok) =>
     [not ok ? seq_wait_input : done ? seq_done_input : prevDone ? seq_watch_input : seq_wait_input, not ok ? '-- ' : done ? '✓ ' : prevDone ? '◔ ' : '· ']
 
-if barstate.islast and seq_show_input and not seq_tf_ok
-    var table seq_ntbl = table.new(dash_table_position(seq_vert_input, seq_horz_input), 1, 2, bgcolor = seq_row_bg_input, border_color = seq_lane_bg_input, border_width = 1, frame_color = seq_lane_bg_input, frame_width = 1)
-    table.cell(seq_ntbl, 0, 0, '◆ SEQ', text_color = Rd(seq_head_tx_input, seq_head_bg_input), bgcolor = seq_head_bg_input, text_size = seq_size_input, text_halign = text.align_left)
-    table.cell(seq_ntbl, 0, 1, '⚠ ' + (timeframe.in_seconds() < 60 ? 'Use a 1m+ chart' : seq_classic ? 'Fractal above ' + LTFName() : 'Chart below ' + PanelLabel(seq_dir_tf)), text_color = Rd(seq_text_input, seq_row_bg_input), bgcolor = seq_row_bg_input, text_size = seq_size_input, text_halign = text.align_left)
-
 // 2 columns, narrow: SEQ · bias | live candle · ATR · FLIP · C2 grade · checklist · C3 lanes · EXEC · plan
-if barstate.islast and seq_show_input and seq_tf_ok
+if barstate.islast and seq_show_input
     var table seq_tbl = table.new(dash_table_position(seq_vert_input, seq_horz_input), 2, 23, bgcolor = seq_row_bg_input, border_color = seq_lane_bg_input, border_width = 1, frame_color = seq_lane_bg_input, frame_width = 1)
     table.clear(seq_tbl, 0, 0, 1, 22)
     color hd = seq_head_bg_input
@@ -4076,7 +4071,9 @@ if barstate.islast and seq_show_input and seq_tf_ok
         else
             ex_tx := 'WAIT SWEEP' + gs
     array<SqRow> rows = array.new<SqRow>()
-    rows.push(SqRow.new('◆ SEQ', hx, hd, (seq_classic ? 'Classic ' : '') + PanelLabel(seq_dir_tf), hx, hd))
+    // vanilla dashboard, folded in: asset · alignment (LTF / model TF), then date · mode
+    rows.push(SqRow.new('◆ ' + syminfo.ticker, hx, hd, PanelLabel(seq_classic ? seq_c2_exec_tf : timeframe.period) + ' / ' + PanelLabel(seq_dir_tf), hx, hd))
+    rows.push(SqRow.new(str.format_time(timenow, 'EEE, MMM dd yyyy', 'America/New_York'), wt, rw, seq_classic ? 'Classic' : 'Boom', wt, rw))
     // the SMT pairs every SMT / PSP read compares against (ⁱ = inverse)
     rows.push(SqRow.new('SMT', wt, rw, smt_pair == '' ? 'off' : SymShort(smt_pair) + (corr_inv1 ? 'ⁱ' : '') + (smt_pair2 == '' ? '' : '·' + SymShort(smt_pair2) + (corr_inv2 ? 'ⁱ' : '')), smt_pair == '' ? wt : tx, rw))
     rows.push(SqRow.new(bias_tx, FILLC, bias_bg, cand_tx, FILLC, cand_bg))
@@ -4090,7 +4087,7 @@ if barstate.islast and seq_show_input and seq_tf_ok
         for [i, w] in SEQ_W
             bool   on  = SeqRowOn(i)
             bool   ok  = on and qf.f.get(i)
-            string det = i == 0 and q_c2 and not na(seq_E) ? TbPx(seq_E) : ok and i == 2 ? SeqPoiTxt(qf) : ''
+            string det = i == 0 and q_c2 and not na(seq_E) ? TbPx(seq_E) : i == 2 ? (ok ? SeqPoiTxt(qf) : seq_poi_all) : ''
             rows.push(SqRow.new((not on ? '· ' : ok ? '✓ ' : '✗ ') + SEQ_LBL.get(i) + (i == 0 ? ' ' + PanelLabel(seq_c2_exec_tf) : ''), ok ? seq_done_input : wt, rw,
                  (det == '' ? '' : det + ' ') + (on ? '+' + str.tostring(w) : '--'), ok ? tx : wt, rw))
     if not seq_classic
@@ -4117,6 +4114,9 @@ if barstate.islast and seq_show_input and seq_tf_ok
     rows.push(SqRow.new('TP1 ' + (pl ? TbPx(SeqTp(0)) : '—'), h1 ? FILLC : pl ? seq_done_input : wt, h1 ? seq_done_input : rw,
          'TP2 ' + (pl ? TbPx(SeqTp(1)) : '—'), h2 ? FILLC : pl ? seq_done_input : wt, h2 ? seq_done_input : rw))
 
+    // chart timeframe the sequence cannot run on: header + why (same table, same render)
+    if not seq_tf_ok
+        rows := array.from(rows.first(), SqRow.new('⚠ ' + (timeframe.in_seconds() < 60 ? 'Use a 1m+ chart' : seq_classic ? 'Fractal above ' + LTFName() : 'Chart below ' + PanelLabel(seq_dir_tf)), tx, rw, '', tx, rw))
     for [i, w] in rows
         table.cell(seq_tbl, 0, i, w.a, text_color = w.ka == FILLC ? Ink(w.ga) : Rd(w.ka, w.ga), bgcolor = w.ga, text_size = seq_size_input, text_halign = text.align_left)
         table.cell(seq_tbl, 1, i, w.b, text_color = w.kb == FILLC ? Ink(w.gb) : Rd(w.kb, w.gb), bgcolor = w.gb, text_size = seq_size_input, text_halign = text.align_right)

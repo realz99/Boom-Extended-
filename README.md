@@ -5,7 +5,13 @@ improved Athenas Boom for rookies
 
 Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b20 · 100,072 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b21 · 99,904 / 100,256 compiled tokens
+
+## Build b21 — full parity with Boom° v2
+
+Audited against the original v2 (every input, function, table row and alert). Nothing of v2 is dropped except what was removed on request (HTF Open, Vertical Lines, L/H Lines, Previous EQ, and the 90m / 6H / 12H / 1M / 3M / 12M SMT families). Restored in this build:
+- The original dashboard's info, now in the table header: asset, alignment (chart TF / model TF) and date.
+- The POI row shows which timeframes it searched when there is no POI (e.g. ✗ POI · 1H/4H/D).
 
 ## Build b20 — one CISD, one set of targets
 
