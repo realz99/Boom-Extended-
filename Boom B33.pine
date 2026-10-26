@@ -3,7 +3,7 @@
 
 //@version=6
 
-// Boom° B33# · build b17 (rebased on Boom° v2)
+// Boom° B33# · build b18 (rebased on Boom° v2)
 indicator('Boom° B33#', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 import Gregorius_XV/GXVAssetCorrelationUtils/1 as AC
 import Gregorius_XV/GXVUtils/12 as QTU
@@ -3564,7 +3564,7 @@ if not na(seq_c2T)
         if c.o_time == seq_c2T
             seq_ci := i
             break
-bool seq_c2Ok = seq_dbias != 0 and not seq_c2Dead
+bool seq_c2Ok = seq_dbias != 0 and seq_dbias == seq_bias and not seq_c2Dead   // + the candle's C2 is the plan's C2
 bool seq_go   = not seq_classic and not seq_hi and seq_c2Ok and (not seq_c3_only_input or seq_dcnum == 3) and BiasOk(seq_dbias)
 bool seq_act  = seq_c2Ok and (seq_dcnum == 3 or seq_dcnum == 4) and not na(seq_E)
 // the C2's plan and confluence text, once per bar (ledger + alerts)
@@ -3685,13 +3685,16 @@ var bool  tr_bu  = false
 var float tr_E   = na
 var float tr_SL  = na
 var int   tr_tp  = 0
+var int   tr_ET  = na   // the fill: time of the lane CISD that opened the trade
 // [SSOT] the lanes' own gate (seq_go): no trade on an invalidated C2
 bool tr_in = seq_go and (seq_a_entry or seq_b_entry)
 if not tr_on and tr_in and nz(tr_key, -1) != seq_c2T and not na(seq_SL)
     tr_key := seq_c2T
     tr_on  := true
     tr_bu  := seq_dbias == 1
-    tr_E   := seq_a_entry and seq_b_entry ? (seq_a_eT <= seq_b_eT ? seq_a_px : seq_b_px) : seq_a_entry ? seq_a_px : seq_b_px
+    bool ta = seq_a_entry and (not seq_b_entry or seq_a_eT <= seq_b_eT)   // the lane that filled first
+    tr_E   := ta ? seq_a_px : seq_b_px
+    tr_ET  := ta ? seq_a_eT : seq_b_eT
     tr_SL  := seq_SL
     tr_tp  := 0
 else if tr_on
@@ -3723,7 +3726,12 @@ else if tr_on
             tr_on := false
 
 // [SSOT] the plan on show (table E / SL / TP rows and the chart entry line): tradeable now, or in its trade
-bool seq_planOn = (seq_act or tr_on) and not na(seq_E)
+bool  seq_planOn = (seq_act or tr_on) and not na(seq_E)
+// [SSOT] the active entry, shown once (table E row + chart line): the C2's CISD level (the limit)
+// until a lane fills, then the fill. TPs stay the C2 leg's projections; R is measured from the fill.
+float seq_EE  = tr_on ? tr_E : seq_E
+int   seq_EET = tr_on ? tr_ET : seq_ET
+bool  seq_EBu = tr_on ? tr_bu : seq_bias == 1
 // Send: one alert() per event, each event key once (varip keeps the keys sent on realtime ticks).
 // The message is built here, once: action first, then price, SL, TP1-3 + RR1 (plan events), context.
 varip string seq_alSent = ''
@@ -3891,10 +3899,10 @@ if (barstate.islast or barstate.isrealtime) and valid_htf and not settings.hide_
     // [SSOT] the table's entry on the chart: the sequence C2's CISD level (E), from its CISD to price,
     // while the plan is on show (tradeable C3 / C4, or in its trade): seq_planOn, as the table's E row.
     if cisd_show_input and seq_planOn
-        color ec = seq_dbias == 1 ? settings.cisd_bull_color : settings.cisd_bear_color
-        bin.lines.push(line.new(nz(seq_ET, seq_c2T), seq_E, time, seq_E, xloc = xloc.bar_time, color = ec, style = LineStyle(settings.cisd_style), width = settings.cisd_width))
+        color ec = seq_EBu ? settings.cisd_bull_color : settings.cisd_bear_color
+        bin.lines.push(line.new(nz(seq_EET, seq_c2T), seq_EE, time, seq_EE, xloc = xloc.bar_time, color = ec, style = LineStyle(settings.cisd_style), width = settings.cisd_width))
         if cisd_lbl_input
-            bin.labels.push(label.new(time, seq_E, seq_dbias == 1 ? cisd_txt_bull : cisd_txt_bear, xloc = xloc.bar_time, color = c_lbl_bg_input, textcolor = ec, style = label.style_label_left, size = settings.c2_size))
+            bin.labels.push(label.new(time, seq_EE, seq_EBu ? cisd_txt_bull : cisd_txt_bear, xloc = xloc.bar_time, color = c_lbl_bg_input, textcolor = ec, style = label.style_label_left, size = settings.c2_size))
 
 // SMT projection runs last so it sees the final drawing budget (Profiler order)
 f_smt_project_events()
@@ -4040,7 +4048,7 @@ if barstate.islast and seq_show_input and seq_tf_ok
     string ex_tx   = 'WAIT C2'
     color  ex_c    = seq_wait_input
     if tr_on
-        ex_tx := (tr_bu ? '▲ ' : '▼ ') + 'IN ' + TbPx(tr_E) + (tr_tp > 0 ? ' TP' + str.tostring(tr_tp) : '')   // the lane fill
+        ex_tx := (tr_bu ? '▲ ' : '▼ ') + 'IN' + (tr_tp > 0 ? ' TP' + str.tostring(tr_tp) : '')
         ex_c  := seq_done_input
     else if seq_pDir != 0
         ex_tx := '◔ C2 CISD PENDING'
@@ -4087,11 +4095,11 @@ if barstate.islast and seq_show_input and seq_tf_ok
             rows.push(SqRow.new(str.repeat('▰', done_n) + str.repeat('▱', 4 - done_n), done_n >= 4 ? seq_done_input : done_n > 0 ? seq_watch_input : seq_bear_input, rw, str.tostring(done_n) + '/4', tx, rw))
     // plan of the latest valid C2 (the trade's when in one): E | SL (BE after TP1), TP1 | TP2 filled when hit
     bool  pl  = seq_planOn and not na(seq_SL)
-    color dC  = seq_bias == 1 ? seq_bull_input : seq_bear_input
+    color dC  = seq_EBu ? seq_bull_input : seq_bear_input
     bool  be  = tr_on and tr_tp > 0
     color slF = be ? seq_done_input : seq_bear_input
-    // [SSOT] E = the C2's CISD level: the same value as the chart entry line and the SETUP alert (the fill is on EXEC)
-    rows.push(SqRow.new('E ' + (pl ? TbPx(seq_E) : '—'), tr_on ? FILLC : pl ? dC : wt, tr_on ? dC : rw,
+    // [SSOT] E = the active entry (seq_EE): the same value as the chart entry line
+    rows.push(SqRow.new('E ' + (pl ? TbPx(seq_EE) : '—'), tr_on ? FILLC : pl ? dC : wt, tr_on ? dC : rw,
          (be ? 'BE ' : 'SL ') + (tr_on ? TbPx(tr_SL) : pl ? TbPx(seq_SL) : '—'), tr_on ? FILLC : pl ? seq_bear_input : wt, tr_on ? slF : rw))
     bool h1 = tr_on and tr_tp >= 1
     bool h2 = tr_on and tr_tp >= 2
