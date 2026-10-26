@@ -9,7 +9,7 @@ Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence a
 
 ## Build b17 — FVGs by price proximity
 
-- **MTF FVG boxes show the zones nearest to price**, on both sides, per timeframe (4H model on 1m–1H charts above 1m: 4H, 1H, Daily; 1H model on a 1m chart: 1H, 15m, 4H, Daily). Price inside a zone shows it first. Before, the newest zones were shown, which could all be far from price.
+- **MTF FVG boxes show the zones nearest to price**, on both sides, per timeframe (4H model, on any chart above 1m: 4H, 1H, Daily; 1H model, on a 1m chart: 1H, 15m, 4H, Daily). Price inside a zone shows it first. Before, the newest zones were shown, which could all be far from price.
 - Same zones the C2 POI score reads; a zone leaves when a candle of its own timeframe wicks fully through it.
 
 ## Build b16 — FVG zones fixed, current CISD to price
