@@ -3,7 +3,7 @@
 
 //@version=6
 
-// Boom° B33# · build b19 (rebased on Boom° v2)
+// Boom° B33# · build b20 (rebased on Boom° v2)
 indicator('Boom° B33#', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 import Gregorius_XV/GXVAssetCorrelationUtils/1 as AC
 import Gregorius_XV/GXVUtils/12 as QTU
@@ -3799,13 +3799,15 @@ C2Tag(CandleSet cs, Setup s, int ci) =>
 
 // Everything one setup draws. lblOk = it is the latest formation (or 'Chart: Latest Formation Only'
 // is off): the chart C-labels and entry zones follow it.
-method DrawSetup(CandleSet cs, Setup s, bool lblOk, bool ext) =>
+// tc = this is the table's C2: its CISD line and std-dev labels come from the plan (one CISD, one
+// target set), so the chart engine's own are not drawn for it
+method DrawSetup(CandleSet cs, Setup s, bool lblOk, bool ext, bool tc) =>
     bool   bu  = s.is_bullish
     bool   ok  = not s.is_invalid
     int    ci  = FindCandleIndex(cs.candles, s.htf_candle_idx)
     string sst = LineStyle(settings.sweep_style)
     // std-dev projections (labels)
-    if ok and settings.proj_show and s.cisd_triggered and not na(s.proj_anchor_1) and not na(s.proj_anchor_0)
+    if ok and not tc and settings.proj_show and s.cisd_triggered and not na(s.proj_anchor_1) and not na(s.proj_anchor_0)
         float rng = s.proj_anchor_1 - s.proj_anchor_0
         for dev in proj_deviations
             float dpx = bu ? s.proj_anchor_0 - math.abs(rng) * dev : s.proj_anchor_0 + rng * dev
@@ -3826,7 +3828,7 @@ method DrawSetup(CandleSet cs, Setup s, bool lblOk, bool ext) =>
         if settings.show_c2_lbl
             bin.labels.push(label.new(ee, s.cisd_level, bu ? '+CISD' : '-CISD', color = color_transparent, textcolor = settings.early_cisd_color, style = bu ? label.style_label_up : label.style_label_down, size = settings.c2_size))
     // the setup CISD (+ label: BUY / SELL CISD and its level = the entry)
-    if settings.cisd_show and s.cisd_triggered and s.has_cisd
+    if settings.cisd_show and s.cisd_triggered and s.has_cisd and not (tc and seq_planOn)
         color cc = bu ? settings.cisd_bull_color : settings.cisd_bear_color
         // ext: the current formation's CISD runs to price (when the table's entry line is not showing)
         int x2 = ext ? bar_index : s.cisd_end_idx + 1
@@ -3855,6 +3857,7 @@ method DrawSetups(CandleSet cs) =>
     // the table's entry line (seq_planOn) already does
     int  li = -1
     bool lb = false
+    bool tc = false   // li / lb is the table's C2
     Setup best = LatestFormation(cs)
     if not na(best)
         li := best.htf_candle_idx
@@ -3867,6 +3870,7 @@ method DrawSetups(CandleSet cs) =>
         for s in cs.setups
             hit := hit or (s.htf_candle_idx == o2 and s.is_bullish == b2)
         if hit
+            tc := true
             li := o2
             lb := b2
     // recorded setups (all CISD-confirmed): History counts setups off the visible HTF candles
@@ -3893,7 +3897,7 @@ method DrawSetups(CandleSet cs) =>
                 todo.push(lv)
     for s in todo
         bool cur = s.htf_candle_idx == li and s.is_bullish == lb
-        cs.DrawSetup(s, not c_lbl_latest_input or cur, cur and not s.is_invalid and not seq_planOn)
+        cs.DrawSetup(s, not c_lbl_latest_input or cur, cur and not s.is_invalid and not seq_planOn, cur and tc)
     cs
 
 if (barstate.islast or barstate.isrealtime) and valid_htf and not settings.hide_setups
@@ -3906,6 +3910,10 @@ if (barstate.islast or barstate.isrealtime) and valid_htf and not settings.hide_
         bin.lines.push(line.new(nz(seq_EET, seq_c2T), seq_EE, time, seq_EE, xloc = xloc.bar_time, color = ec, style = LineStyle(settings.cisd_style), width = settings.cisd_width))
         if cisd_lbl_input
             bin.labels.push(label.new(time, seq_EE, seq_EBu ? cisd_txt_bull : cisd_txt_bear, xloc = xloc.bar_time, color = c_lbl_bg_input, textcolor = ec, style = label.style_label_left, size = settings.c2_size))
+    // [SSOT] the plan's std-dev labels: 0 = E (the C2's CISD), 1 = the C2 extreme (SL); TP n sits on label -n
+    if settings.proj_show and seq_planOn and not na(seq_SL)
+        for dev in proj_deviations
+            bin.labels.push(label.new(nz(seq_ET, seq_c2T), seq_E - (seq_E - seq_SL) * dev, str.tostring(dev), xloc = xloc.bar_time, color = color_transparent, textcolor = settings.proj_color, style = label.style_label_right, size = LabelSize(settings.proj_label_size)))
 
 // SMT projection runs last so it sees the final drawing budget (Profiler order)
 f_smt_project_events()
