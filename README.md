@@ -5,7 +5,12 @@ improved Athenas Boom for rookies
 
 Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b15 · 99,875 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b16 · 100,095 / 100,256 compiled tokens
+
+## Build b16 — FVG zones fixed, current CISD to price
+
+- **MTF FVG boxes are back.** Fixed a bug in the original v2 zone builder (it compared a time with an empty value, which is never true in Pine, so no POI zone was ever built): MTF FVG boxes draw again, the POI row scores again, and ★ (leg from an FVG) and FVG-bounce alerts work again.
+- **Current CISD runs to price:** the current formation's CISD line (the table's C2 while it stands, else the latest formation) extends to the live bar with your Buy / Sell text, whenever the table's entry line is not already showing. One extended line at a time.
 
 ## Build b15 — single source of truth
 

@@ -3,7 +3,7 @@
 
 //@version=6
 
-// Boom° B33# · build b15 (rebased on Boom° v2)
+// Boom° B33# · build b16 (rebased on Boom° v2)
 indicator('Boom° B33#', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 import Gregorius_XV/GXVAssetCorrelationUtils/1 as AC
 import Gregorius_XV/GXVUtils/12 as QTU
@@ -2866,7 +2866,7 @@ method drop(SeqZ z, int i) =>
 // SIBI: high above its top), then the FVG of the last three closed candles (BISI / SIBI) is added. Up to
 // 15 zones (the one farthest from price goes first).
 method zfeed(SeqZ z, int tT) =>
-    if not na(tT) and tT != z.cT
+    if not na(tT) and (na(z.cT) or tT != z.cT)
         if not na(z.cT)
             float h1 = z.cH
             float l1 = z.cL
@@ -3790,7 +3790,7 @@ C2Tag(CandleSet cs, Setup s, int ci) =>
 
 // Everything one setup draws. lblOk = it is the latest formation (or 'Chart: Latest Formation Only'
 // is off): the chart C-labels and entry zones follow it.
-method DrawSetup(CandleSet cs, Setup s, bool lblOk) =>
+method DrawSetup(CandleSet cs, Setup s, bool lblOk, bool ext) =>
     bool   bu  = s.is_bullish
     bool   ok  = not s.is_invalid
     int    ci  = FindCandleIndex(cs.candles, s.htf_candle_idx)
@@ -3819,7 +3819,11 @@ method DrawSetup(CandleSet cs, Setup s, bool lblOk) =>
     // the setup CISD (+ label: BUY / SELL CISD and its level = the entry)
     if settings.cisd_show and s.cisd_triggered and s.has_cisd
         color cc = bu ? settings.cisd_bull_color : settings.cisd_bear_color
-        bin.lines.push(line.new(s.cisd_start_idx, s.cisd_level, s.cisd_end_idx + 1, s.cisd_level, color = cc, style = LineStyle(settings.cisd_style), width = settings.cisd_width))
+        // ext: the current formation's CISD runs to price (when the table's entry line is not showing)
+        int x2 = ext ? bar_index : s.cisd_end_idx + 1
+        bin.lines.push(line.new(s.cisd_start_idx, s.cisd_level, x2, s.cisd_level, color = cc, style = LineStyle(settings.cisd_style), width = settings.cisd_width))
+        if ext and cisd_lbl_input
+            bin.labels.push(label.new(x2, s.cisd_level, bu ? cisd_txt_bull : cisd_txt_bear, color = c_lbl_bg_input, textcolor = cc, style = label.style_label_left, size = settings.c2_size))
     // entry zones C3 / C4 (+ labels)
     if ok and settings.entry_zone_show and lblOk
         color ez = bu ? settings.entry_zone_bull_color : settings.entry_zone_bear_color
@@ -3837,24 +3841,25 @@ method DrawSetup(CandleSet cs, Setup s, bool lblOk) =>
     cs
 
 method DrawSetups(CandleSet cs) =>
-    // 'Chart: Latest Formation Only': the chart C-labels and zones follow the latest formation alone
+    // the current formation: the table's C2 while it stands (and the chart engine has it), else the
+    // latest formation. 'Chart: Latest Formation Only' labels it alone; its CISD runs to price unless
+    // the table's entry line (seq_planOn) already does
     int  li = -1
     bool lb = false
-    if c_lbl_latest_input
-        Setup best = LatestFormation(cs)
-        if not na(best)
-            li := best.htf_candle_idx
-            lb := best.is_bullish
-        // [SSOT] while the table's C2 stands and the chart engine has that formation, it is the one shown
-        if seq_c2Ok and seq_ci >= 0 and seq_ci < cs.candles.size()
-            int  o2  = cs.candles.get(seq_ci).o_idx
-            bool b2  = seq_bias == 1
-            bool hit = b2 ? cs.has_live_bullish and cs.live_bullish.htf_candle_idx == o2 : cs.has_live_bearish and cs.live_bearish.htf_candle_idx == o2
-            for s in cs.setups
-                hit := hit or (s.htf_candle_idx == o2 and s.is_bullish == b2)
-            if hit
-                li := o2
-                lb := b2
+    Setup best = LatestFormation(cs)
+    if not na(best)
+        li := best.htf_candle_idx
+        lb := best.is_bullish
+    // [SSOT] while the table's C2 stands and the chart engine has that formation, it is the one shown
+    if seq_c2Ok and seq_ci >= 0 and seq_ci < cs.candles.size()
+        int  o2  = cs.candles.get(seq_ci).o_idx
+        bool b2  = seq_bias == 1
+        bool hit = b2 ? cs.has_live_bullish and cs.live_bullish.htf_candle_idx == o2 : cs.has_live_bearish and cs.live_bearish.htf_candle_idx == o2
+        for s in cs.setups
+            hit := hit or (s.htf_candle_idx == o2 and s.is_bullish == b2)
+        if hit
+            li := o2
+            lb := b2
     // recorded setups (all CISD-confirmed): History counts setups off the visible HTF candles
     array<Setup> todo = array.new<Setup>()
     int nv = 0
@@ -3878,7 +3883,8 @@ method DrawSetups(CandleSet cs) =>
             if lv.is_post_c2 ? lv.cisd_triggered : settings.sweep_live and lv.is_confirmed
                 todo.push(lv)
     for s in todo
-        cs.DrawSetup(s, not c_lbl_latest_input or (s.htf_candle_idx == li and s.is_bullish == lb))
+        bool cur = s.htf_candle_idx == li and s.is_bullish == lb
+        cs.DrawSetup(s, not c_lbl_latest_input or cur, cur and not s.is_invalid and not seq_planOn)
     cs
 
 if (barstate.islast or barstate.isrealtime) and valid_htf and not settings.hide_setups
