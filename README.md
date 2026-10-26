@@ -5,7 +5,16 @@ improved Athenas Boom for rookies
 
 Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b21 · 99,904 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b22 · 100,152 / 100,256 compiled tokens
+
+## Build b22 — CISD grade (A / B / C)
+
+Every CISD the table tracks (the C2's and each lane entry's) gets a grade, inspired by cephxs CISD [Ultimate +] — graded, never hidden:
+- **F — fast:** the CISD came within 3 execution candles of the extreme (a slow CISD = a stale move).
+- **S — sized:** its leg (CISD level to extreme) is at least 0.5 ATR of its own timeframe.
+- **★ — origin:** the leg starts in an FVG.
+
+A = all three, B = two, C = otherwise. Shown on the CISD row (e.g. `4011.5 A`), the lane entry rows, the SETUP / ENTRY alerts and the ledger.
 
 ## Build b21 — full parity with Boom° v2
 

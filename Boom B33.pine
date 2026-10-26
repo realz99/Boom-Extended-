@@ -3,7 +3,7 @@
 
 //@version=6
 
-// Boom° B33# · build b21 (rebased on Boom° v2)
+// Boom° B33# · build b22 (rebased on Boom° v2)
 indicator('Boom° B33#', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 import Gregorius_XV/GXVAssetCorrelationUtils/1 as AC
 import Gregorius_XV/GXVUtils/12 as QTU
@@ -2116,7 +2116,7 @@ f_smt_seed_engine() =>
 // Auto SMT follows the Profiler Classic ladder (15m / 1H / 4H). 7H / 12H families remain manual.
 profilerSmtMask = QTU.smtEnabledMaskFull(false, 'Classic Sequence', smt_15m_show, smt_30m_show, smt_90m_show, smt_1h_show, smt_4h_show, smt_6h_show, smt_7h_show, smt_12h_show, smt_1d_show, smt_1w_show, smt_1m_show, smt_3m_show, smt_12m_show)
 f_smt_rank_enabled(int rank) =>
-    bit = rank == 1 ? 1 : rank == 2 ? 2 : rank == 3 ? 8 : rank == 4 ? 4 : rank == 5 ? 16 : rank == 6 ? 32 : rank == 7 ? 2048 : rank == 8 ? 4096 : rank == 9 ? 64 : rank == 10 ? 128 : rank == 11 ? 256 : rank == 12 ? 512 : 1024
+    bit = rank == 1 ? 1 : rank == 2 ? 2 : rank == 3 ? 8 : rank == 5 ? 16 : rank == 7 ? 2048 : rank == 9 ? 64 : 128
     auto_intraday = rank == 1 or rank == 3 or rank == 5
     smt_auto_effective and rank <= 8 ? auto_intraday : QTU.smtMaskHas(profilerSmtMask, bit)
 
@@ -2124,13 +2124,13 @@ f_smt_pair_enabled(int pairSlot) =>
     pairSlot == 1 ? smt_corr_pair1.configured : pairSlot == 2 ? smt_corr_pair2.configured : false
 
 f_smt_rank_shortname(int rank) =>
-    rank == 1 ? "15m" : rank == 2 ? "30m" : rank == 3 ? "1H" : rank == 4 ? "90m" : rank == 5 ? "4H" : rank == 6 ? "6H" : rank == 7 ? "7H" : rank == 8 ? "12H" : rank == 9 ? "1D" : rank == 10 ? "1W" : rank == 11 ? "1M" : rank == 12 ? "3M" : rank == 13 ? "12M" : ""
+    rank == 1 ? "15m" : rank == 2 ? "30m" : rank == 3 ? "1H" : rank == 5 ? "4H" : rank == 7 ? "7H" : rank == 9 ? "1D" : rank == 10 ? "1W" : ""
 
 f_smt_rank_color(int rank) =>
-    rank == 1 ? smt_15m_clr : rank == 2 ? smt_30m_clr : rank == 3 ? smt_1h_clr : rank == 4 ? smt_90m_clr : rank == 5 ? smt_4h_clr : rank == 6 ? smt_6h_clr : rank == 7 ? smt_7h_clr : rank == 8 ? smt_12h_clr : rank == 9 ? smt_1d_clr : rank == 10 ? smt_1w_clr : rank == 11 ? smt_1m_clr : rank == 12 ? smt_3m_clr : rank == 13 ? smt_12m_clr : #8a93a3
+    rank == 1 ? smt_15m_clr : rank == 2 ? smt_30m_clr : rank == 3 ? smt_1h_clr : rank == 5 ? smt_4h_clr : rank == 7 ? smt_7h_clr : rank == 9 ? smt_1d_clr : rank == 10 ? smt_1w_clr : #8a93a3
 
 f_smt_rank_gate_sec(int rank) =>
-    rank == 1 ? SMT_GATE_15M : rank == 2 ? SMT_GATE_30M : rank == 3 ? SMT_GATE_1H : rank == 4 ? SMT_GATE_90M : rank == 5 ? SMT_GATE_4H : rank == 6 ? SMT_GATE_6H : rank == 7 ? SMT_GATE_7H : rank == 8 ? SMT_GATE_12H : rank == 9 ? SMT_GATE_1D : rank == 10 ? SMT_GATE_1W : rank == 11 ? SMT_GATE_1M : rank == 12 ? SMT_GATE_3M : SMT_GATE_12M
+    rank == 1 ? SMT_GATE_15M : rank == 2 ? SMT_GATE_30M : rank == 3 ? SMT_GATE_1H : rank == 5 ? SMT_GATE_4H : rank == 7 ? SMT_GATE_7H : rank == 9 ? SMT_GATE_1D : SMT_GATE_1W
 
 f_smt_pair_name_for_slot(int pairSlot) =>
     pairSlot == 1 ? smt_corr_pair1.displayName : pairSlot == 2 ? smt_corr_pair2.displayName : ""
@@ -3203,6 +3203,8 @@ float seq_a_px   = na      // lane entry: its CISD level and time
 float seq_b_px   = na
 int   seq_a_eT   = na
 int   seq_b_eT   = na
+string seq_a_g   = ''      // lane entry CISD grade
+string seq_b_g   = ''
 // lane A, lane B, and the C2 tracker (sweep window = the sequence candle itself, so C1 = the
 // previous sequence candle; CISD on the paired LTF inside the same candle)
 var array<SeqLaneSt> seq_lanes = array.from(SeqLaneSt.new(sMs = timeframe.in_seconds(seq_a_sweep_tf) * 1000, eMs = timeframe.in_seconds(seq_a_exec_tf) * 1000), SeqLaneSt.new(sMs = timeframe.in_seconds(seq_b_sweep_tf) * 1000, eMs = timeframe.in_seconds(seq_b_exec_tf) * 1000), SeqLaneSt.new(sMs = timeframe.in_seconds(seq_dir_tf) * 1000, eMs = timeframe.in_seconds(seq_c2_exec_tf) * 1000, sSeq = true, gMs = seq_gMs))
@@ -3343,6 +3345,7 @@ var int   seq_c2T   = na    // open time of the latest valid C2
 var float seq_E     = na    // its plan: E = its LTF CISD level, SL = its extreme, CISD time
 var float seq_SL    = na
 var int   seq_ET    = na
+var string seq_EG   = ''    // its CISD grade (A / B / C)
 // ── trade plan: every alert, the table and the ledger read it (ported from FM° MTF HTF Quad ATR) ──
 // TPs = std-dev projections of the C2 leg: E (the C2's LTF CISD level) + n x |E - C2 extreme| in the
 // trade direction, n from 'TP std devs'. SL = the C2 extreme.
@@ -3353,6 +3356,15 @@ if barstate.isfirst
         if not na(v)
             seq_tpD.push(math.abs(v))
     seq_tpD.sort()
+// CISD grade (cephxs-inspired; graded, never filtered): F = fast (the CISD within 3 execution candles
+// of the extreme), S = sized (its leg, CISD level to extreme, >= 0.5 ATR of its timeframe: the chart ATR
+// scaled by the square root of time), star = the leg starts in an FVG. A = all three, B = two, else C
+float seq_atr = ta.atr(14)
+SeqCG(SeqTrack t, int ms, bool star) =>
+    int g = star ? 1 : 0
+    if not na(t) and not na(t.eT) and not na(t.xT)
+        g += (t.eT - t.xT <= 3 * ms ? 1 : 0) + (math.abs(t.lvl - t.ext) >= 0.5 * seq_atr * math.sqrt(ms / (timeframe.in_seconds() * 1000.0)) ? 1 : 0)
+    g >= 3 ? 'A' : g == 2 ? 'B' : 'C'
 SeqPx(float p) =>
     na(p) ? '—' : str.tostring(p, format.mintick)
 // table / ledger prices: up to 2 decimals on instruments priced 1000+ (gold, indices) keep cells narrow and
@@ -3475,10 +3487,11 @@ for k = 0 to 1
                 seq_E  := t2.lvl
                 seq_SL := t2.ext
                 seq_ET := t2.eT
+                seq_EG := SeqCG(t2, seq_lc2.eMs, f.org)
             if alert_c2_input and BiasOk(d)
                 int p2 = SeqPts(f)
                 [g2, k2] = SeqGrade(f, p2)
-                al.push(AlEv.new('S' + str.tostring(seq_dO), 'SETUP', d == 1, seq_E, seq_SL, seq_dO, true, (seq_classic ? 'Classic ' : 'Boom ') + PanelLabel(seq_dir_tf) + ' C2 ' + SeqAlertT(seq_dO) + ' closed + ' + PanelLabel(seq_c2_exec_tf) + ' CISD ' + SeqAlertT(seq_ET) + ' · ' + g2 + ' ' + str.tostring(p2) + '%' + SeqTags(f, k == 1 ? 0 : 1) + ' · next: lane sweep + entry CISD'))
+                al.push(AlEv.new('S' + str.tostring(seq_dO), 'SETUP', d == 1, seq_E, seq_SL, seq_dO, true, (seq_classic ? 'Classic ' : 'Boom ') + PanelLabel(seq_dir_tf) + ' C2 ' + SeqAlertT(seq_dO) + ' closed + ' + PanelLabel(seq_c2_exec_tf) + ' CISD ' + seq_EG + ' ' + SeqAlertT(seq_ET) + ' · ' + g2 + ' ' + str.tostring(p2) + '%' + SeqTags(f, k == 1 ? 0 : 1) + ' · next: lane sweep + entry CISD'))
         else
             seq_cnum := seq_cnum > 0 and not seq_dBrk ? seq_cnum + 1 : 0   // an invalidated C2 stops the count
             if d != 0 and seq_gMs > 0
@@ -3542,10 +3555,11 @@ if seq_tf_ok and not seq_dEval
             seq_E     := g.lvl
             seq_SL    := g.ext
             seq_ET    := g.eT
+            seq_EG    := SeqCG(g, seq_lc2.eMs, seq_pF.org)
             if alert_c2_input and BiasOk(seq_pDir)
                 int p3 = SeqPts(seq_pF)
                 [g3, k3] = SeqGrade(seq_pF, p3)
-                al.push(AlEv.new('S' + str.tostring(seq_pT), 'SETUP', seq_pDir == 1, seq_E, seq_SL, seq_pT, true, (seq_classic ? 'Classic ' : 'Boom ') + PanelLabel(seq_dir_tf) + ' C2 ' + SeqAlertT(seq_pT) + ' + ' + PanelLabel(seq_c2_exec_tf) + ' CISD in C3 ' + SeqAlertT(seq_ET) + ' · ' + g3 + ' ' + str.tostring(p3) + '%' + SeqTags(seq_pF, 1) + ' · next: lane sweep + entry CISD'))
+                al.push(AlEv.new('S' + str.tostring(seq_pT), 'SETUP', seq_pDir == 1, seq_E, seq_SL, seq_pT, true, (seq_classic ? 'Classic ' : 'Boom ') + PanelLabel(seq_dir_tf) + ' C2 ' + SeqAlertT(seq_pT) + ' + ' + PanelLabel(seq_c2_exec_tf) + ' CISD ' + seq_EG + ' in C3 ' + SeqAlertT(seq_ET) + ' · ' + g3 + ' ' + str.tostring(p3) + '%' + SeqTags(seq_pF, 1) + ' · next: lane sweep + entry CISD'))
             seq_pDir  := 0
         else if na(g) or g.lk or time_close > seq_dO + seq_gMs
             seq_pDir := 0
@@ -3614,9 +3628,11 @@ if (seq_show_input or alerts_enabled_input) and seq_tf_ok
     if seq_a_entry
         seq_a_px := seq_ta.lvl
         seq_a_eT := seq_ta.eT
+        seq_a_g  := SeqCG(seq_ta, seq_la.eMs, seq_a_star)
     if seq_b_entry
         seq_b_px := seq_tb.lvl
         seq_b_eT := seq_tb.eT
+        seq_b_g  := SeqCG(seq_tb, seq_lb.eMs, seq_b_star)
     // alerts (Boom): each new C1 sweep / entry CISD of a lane while the table counts it
     // ('Conditions: C3 Only' on → only in C3)
     var array<int> seq_alId = array.from(0, 0, 0, 0)    // last alerted sweep / CISD time: A sweep, A CISD, B sweep, B CISD
@@ -3641,7 +3657,7 @@ if (seq_show_input or alerts_enabled_input) and seq_tf_ok
                 if isS
                     al.push(AlEv.new('A' + str.tostring(k) + str.tostring(id), 'SWEEP', seq_dbias == 1, tr.c1, seq_SL, seq_c2T, true, lane + ' · C1 ' + SeqAlertT(tr.c1T) + ' swept in ' + seq_cn + ' · next: ' + PanelLabel(isA ? seq_a_exec_tf : seq_b_exec_tf) + ' CISD = entry' + seq_tagT))
                 else
-                    al.push(AlEv.new('E' + str.tostring(k) + str.tostring(id), 'ENTRY', seq_dbias == 1, tr.lvl, seq_SL, seq_c2T, true, lane + ' CISD ' + SeqAlertT(tr.eT) + ' in ' + seq_cn + ((isA ? seq_a_star : seq_b_star) ? ' · leg from FVG' : '') + seq_tagT))
+                    al.push(AlEv.new('E' + str.tostring(k) + str.tostring(id), 'ENTRY', seq_dbias == 1, tr.lvl, seq_SL, seq_c2T, true, lane + ' CISD ' + (isA ? seq_a_g : seq_b_g) + ' ' + SeqAlertT(tr.eT) + ' in ' + seq_cn + ((isA ? seq_a_star : seq_b_star) ? ' · leg from FVG' : '') + seq_tagT))
 
 // ── ledger events + trade state (ported from FM° MTF HTF Quad ATR) ───────────────
 // A new valid C2 → C2 SETUP; C3 trading through the C2 extreme → XC2; protected swings from the IC engine
@@ -3652,7 +3668,7 @@ if not na(seq_c2T) and seq_c2T != nz(ld_c2, -1) and seq_bias != 0 and not seq_c2
     int p0 = SeqPts(seq_scF)
     [g0, k0] = SeqGrade(seq_scF, p0)
     LedgerAdd(seq_c2T, seq_bias == 1, seq_bias == 1 ? seq_bull_input : seq_bear_input, 'C2 ' + g0 + ' ' + str.tostring(p0) + '%', seq_E,
-         'C2 ' + SeqAlertT(seq_c2T) + ' · ' + PanelLabel(seq_c2_exec_tf) + ' CISD ' + SeqAlertT(seq_ET) + seq_tagT + seq_planT + '\nNext: lane sweep + entry CISD')
+         'C2 ' + SeqAlertT(seq_c2T) + ' · ' + PanelLabel(seq_c2_exec_tf) + ' CISD ' + seq_EG + ' ' + SeqAlertT(seq_ET) + seq_tagT + seq_planT + '\nNext: lane sweep + entry CISD')
 if seq_dBrk and nz(ld_x, -1) != seq_c2T
     ld_x := seq_c2T
     LedgerAdd(seq_c2T, seq_dbias == 1, seq_bear_input, 'XC2', seq_SL, 'C3 traded through the C2 extreme: setup no longer tradeable')
@@ -4087,7 +4103,7 @@ if barstate.islast and seq_show_input
         for [i, w] in SEQ_W
             bool   on  = SeqRowOn(i)
             bool   ok  = on and qf.f.get(i)
-            string det = i == 0 and q_c2 and not na(seq_E) ? TbPx(seq_E) : i == 2 ? (ok ? SeqPoiTxt(qf) : seq_poi_all) : ''
+            string det = i == 0 and q_c2 and not na(seq_E) ? TbPx(seq_E) + ' ' + seq_EG : i == 2 ? (ok ? SeqPoiTxt(qf) : seq_poi_all) : ''
             rows.push(SqRow.new((not on ? '· ' : ok ? '✓ ' : '✗ ') + SEQ_LBL.get(i) + (i == 0 ? ' ' + PanelLabel(seq_c2_exec_tf) : ''), ok ? seq_done_input : wt, rw,
                  (det == '' ? '' : det + ' ') + (on ? '+' + str.tostring(w) : '--'), ok ? tx : wt, rw))
     if not seq_classic
@@ -4095,10 +4111,10 @@ if barstate.islast and seq_show_input
         if not seq_hi
             rows.push(SqRow.new('▸ A', wt, ln, as_lbl + '▸' + ae_lbl, wt, ln))
             rows.push(SqRow.new(a1i + as_lbl + ' swp', tx, rw, not seq_lnOk.get(0) ? '--' : c2_ok ? SeqC1Txt(seq_la, seq_dbias, a_sw) + (seq_a_star ? ' ★' : '') : '—', a1c, rw))
-            rows.push(SqRow.new(a2i + ae_lbl + ' ent', tx, rw, not seq_lnOk.get(1) ? '--' : a_en ? SeqCisdTxt(seq_la, seq_dbias) + ' ' + TbPx(seq_a_px) : '—', a2c, rw))
+            rows.push(SqRow.new(a2i + ae_lbl + ' ent', tx, rw, not seq_lnOk.get(1) ? '--' : a_en ? SeqCisdTxt(seq_la, seq_dbias) + ' ' + TbPx(seq_a_px) + ' ' + seq_a_g : '—', a2c, rw))
             rows.push(SqRow.new('▸ B', wt, ln, bs_lbl + '▸' + be_lbl, wt, ln))
             rows.push(SqRow.new(b1i + bs_lbl + ' swp', tx, rw, not seq_lnOk.get(2) ? '--' : c2_ok ? SeqC1Txt(seq_lb, seq_dbias, b_sw) + (seq_b_star ? ' ★' : '') : '—', b1c, rw))
-            rows.push(SqRow.new(b2i + be_lbl + ' ent', tx, rw, not seq_lnOk.get(3) ? '--' : b_en ? SeqCisdTxt(seq_lb, seq_dbias) + ' ' + TbPx(seq_b_px) : '—', b2c, rw))
+            rows.push(SqRow.new(b2i + be_lbl + ' ent', tx, rw, not seq_lnOk.get(3) ? '--' : b_en ? SeqCisdTxt(seq_lb, seq_dbias) + ' ' + TbPx(seq_b_px) + ' ' + seq_b_g : '—', b2c, rw))
             rows.push(SqRow.new('EXEC', hx, hd, ex_tx, FILLC, ex_c))
             rows.push(SqRow.new(str.repeat('▰', done_n) + str.repeat('▱', 4 - done_n), done_n >= 4 ? seq_done_input : done_n > 0 ? seq_watch_input : seq_bear_input, rw, str.tostring(done_n) + '/4', tx, rw))
     // plan of the latest valid C2 (the trade's when in one): E | SL (BE after TP1), TP1 | TP2 filled when hit
