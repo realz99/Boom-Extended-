@@ -5,7 +5,11 @@ improved Athenas Boom for rookies
 
 Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation, now C3–C6), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b23 · 100,125 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b24 · 100,125 / 100,256 compiled tokens
+
+## Build b24 — calm palette
+
+Neon replaced with calm AMOLED colours (every text colour still >= 4.5:1 on black): candles teal up / slate grey down (chart bar colours and HTF panels), signals teal bull / dusty rose bear (CISD, entry zones, table, SMT, FVG), sand for transition / early CISD / projections, sage for done / C3 / the ● dot, softer purple / copper / blue for the 4H–7H / 1D–1W SMT families and the PW / PM key levels.
 
 ## Build b23 — C5 / C6 tracking (HTF + LTF)
 
