@@ -3,9 +3,18 @@ improved Athenas Boom for rookies
 
 ## Boom° B33# — extended edition
 
-Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation), hardened, with trade management and actionable alerts.
+Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation, now C3–C6), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b22 · 100,152 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b23 · 100,125 / 100,256 compiled tokens
+
+## Build b23 — C5 / C6 tracking (HTF + LTF)
+
+Ported from FM° MTF HTF (C5-C6 port). New input **Last** (C-label row, 4–6, default 6; 4 = the original model).
+- **HTF / model:** a recorded setup carries C4 → C5 → C6. Each new HTF candle keeps the stage's zone and opens the next one (previous candle mid ↔ its open). A stage that trades beyond the previous candle's extreme goes **xC5 / xC6** and the setup stops there. IC-CISD runs through C5 / C6.
+- **HTF panels:** C-labels C1 … C6 (the model panel keeps at least 6 candles). The C4 toggle is now **C4+** (C4–C6).
+- **LTF chart:** C4 / C5 / C6 zones and labels per stage; the last stage shows xCn when it failed.
+- **Sequence table:** the live candle counts C3 … C6, then WAIT C2; C3–C6 taking the C2 extreme → XC2.
+- Room: the trade's EXIT / STOP branches share one ledger row + alert (same text); the model candle's close is computed once per bar.
 
 ## Build b22 — CISD grade (A / B / C)
 

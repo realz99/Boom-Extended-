@@ -3,7 +3,7 @@
 
 //@version=6
 
-// Boom° B33# · build b22 (rebased on Boom° v2)
+// Boom° B33# · build b23 (rebased on Boom° v2)
 indicator('Boom° B33#', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 import Gregorius_XV/GXVAssetCorrelationUtils/1 as AC
 import Gregorius_XV/GXVUtils/12 as QTU
@@ -133,6 +133,8 @@ type Setup
     float ez_c4_bot          // C4 zone bottom price
     int ez_c4_left_time      // C4 zone left (C4 open time)
     int ez_c4_right_time     // C4 zone right (C4 close)
+    int stage = 4            // [C5-C6] the stage the ez_c4 zone holds (4 / 5 / 6)
+    array<float> ezh         // [C5-C6] kept earlier stage zones: left, right, top, bottom each
 
 type CandleSettings
     string htf
@@ -411,12 +413,14 @@ settings.c2_color               := input.color(#e6edf3, 'Label      ', inline='c
 settings.c2_size                := input.string(size.small, '', options=[size.tiny, size.small, size.normal, size.large], inline='c2', group=group_sweep)
 settings.show_c2_lbl            := input.bool(true, 'C2', inline='c2', group=group_sweep)
 settings.show_c3_lbl            := input.bool(true, 'C3', inline='c2', group=group_sweep)
-settings.show_c4_lbl            := input.bool(true, 'C4', inline='c2', group=group_sweep)
+settings.show_c4_lbl            := input.bool(true, 'C4+', inline='c2', group=group_sweep)
+c_last_input                    = input.int(6, 'Last', minval = 4, maxval = 6, inline='c2', group=group_sweep, tooltip='Highest candle a setup is carried to. 4 = the original model (zones C3 + C4). 5 / 6: each new HTF candle keeps the zone and opens the next one (C5, C6: the previous candle mid to its open) unless the stage went xC (traded beyond the previous candle extreme); IC-CISD runs through them. The HTF panel C-labels and the table candle count run to it too (the table to C5 at least).')
+int seq_cLast                   = math.max(5, c_last_input)
 c_lbl_loc_input                 = input.string('Both', 'C-Labels On', options=['Chart', 'Panel', 'Both'], inline='c_lbl_loc', group=group_sweep, tooltip='Chart: C2 / C3 / C4 labels on price (as before).\nPanel: C1 / C2 / C3 / C4 on the HTF panel that hosts the Fractal model (latest formation only, Profiler style).\nBoth: chart + panel.\nThe C2 / C3 / C4 toggles apply to both places (C1 follows C2).')
 c_lbl_latest_input              = input.bool(true, 'Chart: Latest Formation Only', inline='c_lbl_latest', group=group_sweep, active = c_lbl_loc_input != 'Panel', tooltip='On: the chart shows the C2 / C3 / C4 labels of the latest formation only (the same one labelled on the model panel), so older setups no longer stack extra C2 / C3 / C4 labels or C3 / C4 entry-zone boxes.\nOff: every setup kept by History shows its labels and entry-zone boxes (previous behaviour).\nThe HTF1 / HTF3 panel labels never draw on chart candles.')
 c_lbl_bg_input                  = input.color(color.new(#000000, 25), 'Label BG', inline='c_lbl_loc', group=group_sweep, tooltip='Backing behind the chart C2 / C3 / C4 / xC2 and CISD labels so they stay readable over candles.')
 pnl_other_clbl_input            = input.bool(true, 'C1–C4 on Other Panels', inline='c_lbl_other', group=group_sweep, active = c_lbl_loc_input != 'Chart', tooltip='On / off for the C1–C4 labels on the HTF panels that do not host the Fractal model. The model panel follows C-Labels On.')
-pnl_clbl_conf                   = input.string('Confirmed', 'Panel C-Labels', options=['Live', 'Confirmed'], inline='c_lbl_mode', group=group_sweep, active = c_lbl_loc_input != 'Chart', tooltip='HTF panels. Live: C2 on the sweep.\nConfirmed: model panel = C2 confirmed by the table (●); if C3–C5 takes its extreme → live sweep.') == 'Confirmed'
+pnl_clbl_conf                   = input.string('Confirmed', 'Panel C-Labels', options=['Live', 'Confirmed'], inline='c_lbl_mode', group=group_sweep, active = c_lbl_loc_input != 'Chart', tooltip='HTF panels. Live: C2 on the sweep.\nConfirmed: model panel = C2 confirmed by the table (●); if C3–C6 takes its extreme → live sweep.') == 'Confirmed'
 pnl_dot_color                   = input.color(#00ff9d, 'C2 Confirmed ●', inline='c2dot', group=group_sweep, active = c_lbl_loc_input != 'Chart')
 pnl_dot_size                    = input.string('Medium', '', options=['Small', 'Medium', 'Large'], inline='c2dot', group=group_sweep, active = c_lbl_loc_input != 'Chart', tooltip='Colour and size of the dot after a C2 the table confirmed (model panel).')
 bool c_lbl_chart                = c_lbl_loc_input != 'Panel'
@@ -646,7 +650,7 @@ seq_wait_input                   = input.color(#8a93a3, 'Not yet', inline = 'seq
 seq_bull_input                   = input.color(#00e5ff, 'Bull / Bear', inline = 'seq_c3', group = group_seq, active = seq_show_input)
 seq_bear_input                   = input.color(#ff3366, '', inline = 'seq_c3', group = group_seq, active = seq_show_input)
 seq_cand_c3_input                = input.color(#00ff9d, 'Candle: C3', inline = 'seq_c4', group = group_seq, active = seq_show_input)
-seq_cand_other_input             = input.color(#2b3140, 'Other', inline = 'seq_c4', group = group_seq, active = seq_show_input, tooltip = 'LIVE CANDLE: C3 / C4 / C5 after a valid C2 close, then WAITING C2. C3–C5 that takes the C2 extreme against the bias → WAITING C2.')
+seq_cand_other_input             = input.color(#2b3140, 'Other', inline = 'seq_c4', group = group_seq, active = seq_show_input, tooltip = 'LIVE CANDLE: C3 … C6 (Last candle) after a valid C2 close, then WAITING C2. C3–C6 that takes the C2 extreme against the bias → WAITING C2.')
 seq_chk_input                    = input.bool(true, 'Score Checklist', group = group_seq, active = seq_show_input, tooltip = 'Show the C2 QUALITY checklist.\nCISD in C2 +75 · inside 75% of C1 +5 · POI +10 (the C2 extreme traded INTO a POI FVG, or SMT fill: legs that start in an FVG are favoured) · SMT +5 · POI + SMT +5\nLOW 75–80 · HIGH 85–90 · BOOM 95–100 · no CISD = INVALID')
 seq_grace_input                  = input.bool(false, 'C2 CISD in C3', group = group_seq, active = seq_show_input and not seq_classic, tooltip = 'Accept the C2 CISD in the first 75% of C3 (1H: 45m, 4H: 3h).')
 mtf_fvg_input                    = input.bool(true, 'MTF FVG', inline = 'seq_fvg', group = group_seq, active = seq_show_input)
@@ -720,7 +724,10 @@ int    pnl_a_match  = pnl_a1_ok and tfSec(pnl_a1_tf) == model_sec ? 1 : pnl_a2_o
 pnlCountOf(int pane) =>
     pane == 1 ? pnl1_count : pane == 2 ? pnl2_count : pane == 3 ? pnl3_count : 0
 // Model keeps C1..C4 (min 4 candles); a matching panel can show more
-htf.settings.max_display := math.max(4, pnlCountOf(pnl_a_match))
+htf.settings.max_display := math.max(c_last_input, pnlCountOf(pnl_a_match))
+// the model candle's close and the IC window end (one candle on): once per bar for the engine
+int mdl_tc  = time_close(model_tf)
+int mdl_lqE = mdl_tc + timeframe.in_seconds(model_tf) * 1000
 
 // ============================================================================
 // Helper Functions
@@ -879,6 +886,7 @@ TrySetEntryZoneC4(Setup setup, float c3_h, float c3_l, float c4_open_price, int 
             setup.ez_c4_top := math.max(c3m, c4_open_price)
             setup.ez_c4_bot := math.min(c3m, c4_open_price)
             setup.ez_c4_set := true
+            setup.ezh.concat(array.from(float(left_time), right_time, setup.ez_c4_top, setup.ez_c4_bot))
             setup.ez_c4_invalid := false
     setup
 
@@ -1152,6 +1160,7 @@ NewSetup(bool bu, float px, int pxIdx, int swept, int htfIdx, float ext, int ext
     s.c2_x             := extIdx
     s.c2_y             := ext
     s.htf_count        := 1
+    s.ezh              := array.new<float>()
     s.tracked_extreme  := ext
     s.extreme_bar_idx  := extIdx
     [lvl, idx] = FindCISDLevel(extIdx, bu ? -1 : 1)
@@ -1203,11 +1212,11 @@ method Roll(CandleSet cs, bool bu) =>
             bool c4o = s.htf_count == 3
             if c4o
                 s.ez_c3_right_time := time
-                TrySetEntryZoneC4(s, k.h, k.l, open, time, time_close(cs.settings.htf))
+                TrySetEntryZoneC4(s, k.h, k.l, open, time, mdl_tc)
             if s.cisd_triggered
                 if na(s.proj_anchor_0) and s.has_cisd
                     SetProj(s, bu)
-                s.liq_end_time := time_close(cs.settings.htf) + timeframe.in_seconds(cs.settings.htf) * 1000
+                s.liq_end_time := mdl_lqE
                 cs.setups.unshift(s)
                 cs.EndLive(bu)
             else if not c4o
@@ -1256,7 +1265,7 @@ method TrackSide(CandleSet cs, bool bu, Candle c1, bool isNew) =>
                 s.cisd_triggered := true
                 s.cisd_end_idx   := bar_index
                 SetProj(s, bu)
-                s.liq_end_time := time_close(cs.settings.htf) + timeframe.in_seconds(cs.settings.htf) * 1000
+                s.liq_end_time := mdl_lqE
                 TrySetEntryZoneC3(s)
             // C4 invalid (C4 beyond C3's extreme) while a C4-confirmed setup is still live
             if s.cisd_triggered and not s.ez_c4_invalid and not na(s.c3_extreme) and not na(s.ez_c4_right_time) and time < s.ez_c4_right_time and (bu ? low < s.c3_extreme : high > s.c3_extreme)
@@ -1280,17 +1289,21 @@ method Monitor(CandleSet candleSet, bool isNewHTFCandleArg) =>
     int prev_idx = isNewHTFCandle ? 0 : 1
     if candleSet.candles.size() > prev_idx
         Candle prev_htf = candleSet.candles.get(prev_idx)
-        // ===== C4 INVALIDATION + IC-CISD of the recorded setups =====
-        for [i, setup] in candleSet.setups
+        // ===== C4–C6 + IC-CISD of the recorded setups =====
+        // [C5-C6] a recorded setup carries C4 → C5 → C6 (up to 'Last' candle): each new HTF candle keeps
+        // the stage's zone and opens the next one (the previous candle's mid ↔ its open), unless the
+        // stage went xC (traded beyond the previous candle's extreme). IC-CISD runs through the stages.
+        for setup in candleSet.setups
             if setup.cisd_triggered and not na(setup.liq_end_time) and time < setup.liq_end_time
-                if setup.is_bullish
-                    if not setup.ez_c4_invalid and not na(setup.c3_extreme) and not na(setup.ez_c4_left_time) and not na(setup.ez_c4_right_time) and time < setup.ez_c4_right_time and low < setup.c3_extreme
-                        setup.ez_c4_invalid := true
-                        setup.ez_c4_invalid_time := time_close
-                else
-                    if not setup.ez_c4_invalid and not na(setup.c3_extreme) and not na(setup.ez_c4_left_time) and not na(setup.ez_c4_right_time) and time < setup.ez_c4_right_time and high > setup.c3_extreme
-                        setup.ez_c4_invalid := true
-                        setup.ez_c4_invalid_time := time_close
+                if isNewHTFCandle and setup.stage < c_last_input and not setup.ez_c4_invalid and not na(setup.ez_c4_right_time) and time >= setup.ez_c4_right_time
+                    Candle k = candleSet.candles.first()
+                    setup.stage     += 1
+                    setup.ez_c4_set := false
+                    TrySetEntryZoneC4(setup, k.h, k.l, open, time, mdl_tc)
+                    setup.liq_end_time := mdl_lqE
+                if not setup.ez_c4_invalid and not na(setup.c3_extreme) and not na(setup.ez_c4_right_time) and time < setup.ez_c4_right_time and (setup.is_bullish ? low < setup.c3_extreme : high > setup.c3_extreme)
+                    setup.ez_c4_invalid      := true
+                    setup.ez_c4_invalid_time := time_close
                 ICUpdate(setup)
         for d = 0 to 1
             candleSet.TrackSide(d == 1, prev_htf, isNewHTFCandle)
@@ -1678,7 +1691,7 @@ PanelCLabel(Candle c, string txt, bool bull, color col) =>
 // confirmed C2 → a green ● right after its text (no-break spaces keep the padding, monospace)
 PanelCLabelsAt(array<Candle> arr, int best, bool bull, bool dot) =>
     if best >= 0
-        for j = 1 to -2
+        for j = 1 to 2 - c_last_input
             int idx = best + j
             if idx >= 0 and idx < arr.size() and (j >= 0 ? settings.show_c2_lbl : j == -1 ? settings.show_c3_lbl : settings.show_c4_lbl)
                 string t = j == 1 ? 'C1' : j == 0 ? 'C2' + PspTag(arr, best) : 'C' + str.tostring(2 - j)
@@ -3523,7 +3536,7 @@ for k = 0 to 1
             seq_dL := math.min(seq_dL, low)
             seq_dC := close
         // C3–C5 that takes the C2's protected extreme (bull: C2 low) invalidates that C2
-        if seq_dcnum >= 3 and seq_dcnum <= 5 and seq_dbias != 0 and (seq_dbias == 1 ? seq_dL < seq_c2X : seq_dH > seq_c2X)
+        if seq_dcnum >= 3 and seq_dcnum <= seq_cLast and seq_dbias != 0 and (seq_dbias == 1 ? seq_dL < seq_c2X : seq_dH > seq_c2X)
             seq_dBrk   := true
             seq_c2Dead := true
         // C2 QUALITY live: the candle took the previous low (▲) / high (▼); both → its colour
@@ -3718,17 +3731,17 @@ if not tr_on and tr_in and nz(tr_key, -1) != seq_c2T and not na(seq_SL)
     tr_tp  := 0
 else if tr_on
     float  risk = math.abs(tr_E - seq_SL)
-    if seq_c2T != tr_key
+    // the trade ends: a new C2 formed (EXIT at the close) or the stop / break-even stop was hit; one
+    // ledger row + one alert for both
+    bool nx = seq_c2T != tr_key
+    if nx or (tr_bu ? low <= tr_SL : high >= tr_SL)
         tr_on := false
-        LedgerAdd(tr_key, tr_bu, seq_bear_input, 'EXIT', close, 'A new C2 formed · in trade from ' + SeqPx(tr_E) + ' · TPs hit ' + str.tostring(tr_tp) + ' · ' + SeqR(tr_bu, tr_E, close, risk))
+        float  xp = nx ? close : tr_SL
+        string rr = SeqR(tr_bu, tr_E, xp, risk)
+        string th = ' · TPs hit ' + str.tostring(tr_tp)
+        LedgerAdd(tr_key, tr_bu, nx or tr_tp == 0 ? seq_bear_input : seq_watch_input, nx ? 'EXIT' : tr_tp > 0 ? 'BREAK-EVEN STOP' : 'STOP', xp, (nx ? 'A new C2 formed · in trade from ' : 'Entry ') + SeqPx(tr_E) + th + ' · ' + rr)
         if alert_stop_input
-            al.push(AlEv.new('X' + str.tostring(tr_key), 'EXIT', tr_bu, close, tr_SL, tr_key, false, 'a new C2 formed: close the rest · ' + SeqR(tr_bu, tr_E, close, risk) + ' · entry ' + SeqPx(tr_E) + ' · TPs hit ' + str.tostring(tr_tp)))
-    else if tr_bu ? low <= tr_SL : high >= tr_SL
-        tr_on := false
-        string nm = tr_tp > 0 ? 'BREAK-EVEN STOP' : 'STOP'
-        LedgerAdd(tr_key, tr_bu, tr_tp > 0 ? seq_watch_input : seq_bear_input, nm, tr_SL, 'Entry ' + SeqPx(tr_E) + ' · TPs hit ' + str.tostring(tr_tp) + ' · ' + SeqR(tr_bu, tr_E, tr_SL, risk))
-        if alert_stop_input
-            al.push(AlEv.new('Q' + str.tostring(tr_key), tr_tp > 0 ? 'BE' : 'STOP', tr_bu, tr_SL, tr_SL, tr_key, false, 'trade closed · ' + SeqR(tr_bu, tr_E, tr_SL, risk) + ' · entry ' + SeqPx(tr_E) + ' · TPs hit ' + str.tostring(tr_tp)))
+            al.push(AlEv.new((nx ? 'X' : 'Q') + str.tostring(tr_key), nx ? 'EXIT' : tr_tp > 0 ? 'BE' : 'STOP', tr_bu, xp, tr_SL, tr_key, false, (nx ? 'a new C2 formed: close the rest · ' : 'trade closed · ') + rr + ' · entry ' + SeqPx(tr_E) + th))
     else
         int nT = math.min(3, seq_tpD.size())
         while tr_tp < nT
@@ -3860,11 +3873,18 @@ method DrawSetup(CandleSet cs, Setup s, bool lblOk, bool ext, bool tc) =>
             bin.boxes.push(box.new(s.ez_c3_left_time, s.ez_c3_top, EntryZoneRight(s.ez_c3_right_time), s.ez_c3_bot, xloc = xloc.bar_time, bgcolor = ez, border_color = color_transparent, border_width = 0))
             if settings.show_c3_lbl and c_lbl_chart
                 bin.labels.push(label.new(s.ez_c3_left_time + dx, bu ? s.ez_c3_bot : s.ez_c3_top, 'C3', xloc = xloc.bar_time, color = c_lbl_bg_input, textcolor = settings.c2_color, style = est, size = settings.c2_size))
-        if s.ez_c4_set and not na(s.ez_c4_left_time)
-            if not s.ez_c4_invalid
-                bin.boxes.push(box.new(s.ez_c4_left_time, s.ez_c4_top, EntryZoneRight(s.ez_c4_right_time), s.ez_c4_bot, xloc = xloc.bar_time, bgcolor = ez, border_color = color_transparent, border_width = 0))
-            if settings.show_c4_lbl and c_lbl_chart
-                bin.labels.push(label.new(s.ez_c4_left_time + dx, bu ? s.ez_c4_bot : s.ez_c4_top, s.ez_c4_invalid ? 'xC4' : 'C4', xloc = xloc.bar_time, color = c_lbl_bg_input, textcolor = s.ez_c4_invalid ? #ff3366 : settings.c2_color, style = est, size = settings.c2_size))
+        // C4–C6 zones (ezh: left, right, top, bottom per stage; the last = the current stage)
+        int nz = s.ezh.size() / 4 - 1
+        if s.ez_c4_set and nz >= 0
+            for i = 0 to nz
+                bool  xz = i == nz and s.ez_c4_invalid
+                int   zl = int(s.ezh.get(4 * i))
+                float zt = s.ezh.get(4 * i + 2)
+                float zb = s.ezh.get(4 * i + 3)
+                if not xz
+                    bin.boxes.push(box.new(zl, zt, EntryZoneRight(int(s.ezh.get(4 * i + 1))), zb, xloc = xloc.bar_time, bgcolor = ez, border_color = color_transparent, border_width = 0))
+                if settings.show_c4_lbl and c_lbl_chart
+                    bin.labels.push(label.new(zl + dx, bu ? zb : zt, (xz ? 'xC' : 'C') + str.tostring(s.stage - nz + i), xloc = xloc.bar_time, color = c_lbl_bg_input, textcolor = xz ? #ff3366 : settings.c2_color, style = est, size = settings.c2_size))
     cs
 
 method DrawSetups(CandleSet cs) =>
@@ -4040,8 +4060,8 @@ if barstate.islast and seq_show_input
     color  bias_bg = seq_bias == 1 ? seq_bull_input : seq_bias == -1 ? seq_bear_input : ln
     string bias_tx = seq_bias == 1 ? '▲ BULL' : seq_bias == -1 ? '▼ BEAR' : '— NO C2'
     string arrow   = seq_dbias == 1 ? '▲ ' : seq_dbias == -1 ? '▼ ' : ''
-    // live candle: C2 ✓ = closed valid, then C3 / C4 / C5; XC2 = C3 took the C2 extreme
-    string cand_tx = seq_lastC2 ? 'C2 ✓' : c3 ? 'C3' : seq_dBrk ? 'XC2' : seq_dcnum == 4 or seq_dcnum == 5 ? 'C' + str.tostring(seq_dcnum) : 'WAIT C2'
+    // live candle: C2 ✓ = closed valid, then C3 … C6 (up to 'Last' candle, min C5); XC2 = C3+ took the C2 extreme
+    string cand_tx = seq_lastC2 ? 'C2 ✓' : c3 ? 'C3' : seq_dBrk ? 'XC2' : seq_dcnum > 3 and seq_dcnum <= seq_cLast ? 'C' + str.tostring(seq_dcnum) : 'WAIT C2'
     color  cand_bg = seq_lastC2 or c3 ? seq_cand_c3_input : seq_dBrk ? seq_bear_input : seq_cand_other_input
     // C2 grade: the valid C2 that just closed / behind the C3; else the live check of this candle
     bool   q_c2    = seq_lastC2 or c3
