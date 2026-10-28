@@ -3,9 +3,14 @@ improved Athenas Boom for rookies
 
 ## Boom° B33# — extended edition
 
-Based on Boom° v2 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation, now C3–C6), hardened, with trade management and actionable alerts.
+Based on Boom° v3 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation, now C3–C6), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b24 · 100,125 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b25 · 98,349 / 100,256 compiled tokens
+
+## Build b25 — rebased on Boom° v3
+
+Athena's update, all in: 1H model lane A entry is a 3m CISD (was 5m); SMT fill = a 15m / 1H / 4H / D POI FVG on the same candles in the chart and pair 1 (e.g. MNQ vs MES), untouched by both, touched by exactly one C2 (same result on 3m and 5m); 4H model POI adds 15m; the SMT-Fill library is removed. Kept: our fix for v3's POI zone builder (`na(cT)`: new zones never registered), and the POI row shows zone + SMT fill together (`15m BISI+F`).
+Table / ledger prices are whole numbers on instruments priced 1,000+ (gold, indices, BTC); cheaper ones keep tick decimals.
 
 ## Build b24 — calm palette
 

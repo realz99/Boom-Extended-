@@ -3,11 +3,10 @@
 
 //@version=6
 
-// Boom° B33# · build b24 (rebased on Boom° v2)
+// Boom° B33# · build b25 (rebased on Boom° v3)
 indicator('Boom° B33#', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 import Gregorius_XV/GXVAssetCorrelationUtils/1 as AC
 import Gregorius_XV/GXVUtils/12 as QTU
-import Gregorius_XV/QTSmtFillEngine/13 as SMTF
 
 // ============================================================================
 // Types - Data Only (no drawing objects stored)
@@ -284,7 +283,7 @@ string group_label              = "Label Settings  ━━━━━━━━━�
 alerts_enabled_input            = input.bool(true, 'Alerts?', group=group_general, tooltip='To turn on the alerts, follow these steps:\n\n1) Make sure that the Alerts? toggle is ON.\n2) Right-click on the indicator on your chart.\n3) Click Add Alert on this indicator.\n4) Choose the Alert Name and confirm by clicking Create.\n\nNOTE: if you change any Settings, delete and re-create the alerts!')
 settings.sweep_history          := input.int(4, 'History        ', minval=0, group=group_general, inline='history')
 settings.sweep_visible_only     := input.bool(true, '', tooltip='Number of historical setups to show:\n\n☑ ON: Setups on visible HTF candles always shown. This count adds older setups that scrolled away.\n\n☐ OFF: Only show this many setups total.', inline='history', group=group_general)
-seq_mode_input                  = input.string('Boom', 'Sequence', options=['Boom', 'Classic'], group=group_general, tooltip='Boom: fixed model. 1m chart → 1H, other charts below 4H → 4H.\n• C2 valid = C2 + LTF CISD (1H → 5m, 4H → 15m)\n• C3 SETUP lanes: C1 sweep → entry CISD (1H: 15m → 5m / 1m, 4H: 1H → 5m, 30m → 3m)\n• POI: 1H model 15m/1H/4H/D, 4H model 1H/4H/D\n• Alerts: C2 close + C3 sweep / entry\n\nClassic: model = Fractal pairing.\n• C2 valid = C2 + CISD on the Fractal LTF\n• No C3 SETUP lanes\n• POI by pairing (15m–1H model 15m/1H/4H, 4H 1H/4H/D, D/W/M own TF)\n• Alerts: C2 close only\n\nAbove a 1H chart: no C3 lanes; C2 QUALITY = CISD (+ SMT).')
+seq_mode_input                  = input.string('Boom', 'Sequence', options=['Boom', 'Classic'], group=group_general, tooltip='Boom: fixed model. 1m chart → 1H, other charts below 4H → 4H.\n• C2 valid = C2 + LTF CISD (1H → 5m, 4H → 15m)\n• C3 SETUP lanes: C1 sweep → entry CISD (1H: 15m → 3m / 1m, 4H: 1H → 5m, 30m → 3m)\n• POI: 15m/1H/4H/D\n• Alerts: C2 close + C3 sweep / entry\n\nClassic: model = Fractal pairing.\n• C2 valid = C2 + CISD on the Fractal LTF\n• No C3 SETUP lanes\n• POI by pairing (15m–1H model 15m/1H/4H, 4H 1H/4H/D, D/W/M own TF)\n• Alerts: C2 close only\n\nAbove a 1H chart: no C3 lanes; C2 QUALITY = CISD (+ SMT).')
 bool seq_classic                = seq_mode_input == 'Classic'
 fractal_mode_input              = input.string('Automatic','Fractal', options=['Automatic', 'Custom', '1m-15m', '3m-30m', '5m-1H', '15m-4H', '1H-1D', '4H-1W', '1D-1M'], group=group_general, active=seq_classic, tooltip='Classic only. LTF-HTF pairing of the model.\nAutomatic: chart TF → next HTF.\nCustom: the two timeframes below.')
 custom_ltf_input                = input.timeframe('5', 'Custom Fractal  ', inline='custom_tf', group=group_general, active=seq_classic and fractal_mode_input == 'Custom')
@@ -300,7 +299,7 @@ alert_tp_input                   = input.bool(true, 'TP hit', group=group_alerts
 alert_stop_input                 = input.bool(true, 'Stop / exit', group=group_alerts, active=alerts_enabled_input and not seq_classic, inline='al_tr', tooltip='Trade state (Boom lanes): the first lane entry opens it. TP: each target touched (after TP1 the stop moves to break-even). STOP / BREAK-EVEN STOP: the stop traded. EXIT: a new C2 formed while in the trade. Every message carries the result in R.')
 alert_tps_input                  = input.string('1,2,4', 'TP std devs', group=group_alerts, tooltip='Targets = E + n x |E - C2 extreme| in the trade direction (E = the C2 LTF CISD level: the std-dev projection rule). First three are TP1-TP3. SL = the C2 extreme. Every alert carries E · SL · TP1-3 · RR1.')
 alert_fvg_input                  = input.bool(true, 'FVG bounce', group=group_alerts, active=alerts_enabled_input, tooltip='From C3 on, a bar wicks into a bias-side POI FVG (the MTF FVG boxes) and closes back out. Every alert carries the confluence (FVG zone, SMT, SMT-Fill, PSP) and the plan: E · SL · TP1-3 · RR1.')
-alert_entry_input                = input.bool(true, 'C3: Entry CISD', group=group_alerts, active=alerts_enabled_input and not seq_classic, tooltip='Boom only. Entry CISD after the C1 sweep: 1H model 5m / 1m, 4H model 5m / 3m.')
+alert_entry_input                = input.bool(true, 'C3: Entry CISD', group=group_alerts, active=alerts_enabled_input and not seq_classic, tooltip='Boom only. Entry CISD after the C1 sweep: 1H model 3m / 1m, 4H model 5m / 3m.')
 
 getHigherTF() =>
     switch timeframe.period
@@ -522,9 +521,8 @@ string group_smt_ranks          = "SMT: Families  ━━━━━━━━━━
 string group_smt_htf            = group_smt_ranks
 string group_smt_style          = group_smt
 string group_smt_pairs          = group_smt
-string group_smtf               = "SMT-Fill  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-smt_correlation_mode            = input.string("Classic", "Correlation Mode", options=["Classic", "Manual"], group=group_smt_pairs, tooltip="Classic: the GXV AssetCorrelationUtils resolver picks the pairs for the chart symbol. Exception: MNQ (CME) and NAS100 (Capital.com, Pepperstone, FXCM, FOREXCOM) always pair with MES (+ MYM in Triad).\nManual: use Pair 1 / Pair 2 below.\nThe two pairs feed the chart SMTs, the SMT-Fill and the panel SMT / PSP (2 data requests).")
+smt_correlation_mode            = input.string("Classic", "Correlation Mode", options=["Classic", "Manual"], group=group_smt_pairs, tooltip="Classic: the GXV AssetCorrelationUtils resolver picks the pairs for the chart symbol. Exception: MNQ (CME) and NAS100 (Capital.com, Pepperstone, FXCM, FOREXCOM) always pair with MES (+ MYM in Triad).\nManual: use Pair 1 / Pair 2 below.\nThe two pairs feed the chart SMTs and the panel SMT / PSP; pair 1 also feeds the SMT fill of C2 QUALITY (2 data requests).")
 smt_correlation_type            = input.string("Triad", "Correlation Type", options=["Dyad", "Triad"], group=group_smt_pairs, active=smt_correlation_mode != "Manual", tooltip="Dyad = chart + 1 pair. Triad = chart + 2 pairs.")
 gold_on1                        = input.bool(true, 'Gold 1', inline='gold1', group=group_smt_pairs, active=smt_correlation_mode != 'Manual')
 gold_s1                         = input.symbol('PEPPERSTONE:XAGUSD', '', inline='gold1', group=group_smt_pairs, active=smt_correlation_mode != 'Manual' and gold_on1, tooltip='Gold charts (XAU…): the first two ticked assets are SMT pair 1 and pair 2 (the engine compares two). Correlation Type Triad uses both, Dyad the first. Manual mode ignores these.')
@@ -608,30 +606,13 @@ smt_12m_clr = #8a93a3
 
 
 
-// SMT-Fill (QTSmtFillEngine)
-maxGapsInput                    = input.int(25, "Maximum Gaps", minval = 1, maxval = 100, group = group_smtf)
-extendFvgsToLastTouchInput      = input.bool(true, "Extend FVGs till last touch", group = group_smtf)
-showOnlyCorrelatedInput         = input.bool(false, "Show only correlated FVGs", group = group_smtf)
-hideFilledFvgsInput             = input.bool(true, "Hide Filled FVGs", group = group_smtf)
-maxSmtFillsInput                = input.int(25, "Maximum SMT Fills", minval=1, maxval=100, group=group_smtf)
-hideMitigatedFvgsInput          = input.bool(false, "Hide Mitigated FVGs", group = group_smtf)
-showSmtFillLinesInput           = input.bool(true, "Show SMT Fill Lines", group = group_smtf)
-smtFillLineWidthInput           = input.int(1, "Line Width", minval = 1, maxval = 5, group = group_smtf)
-smtFillLineStyleInput           = input.string("___", "Line Style", options = ["___", "----", "...."], group = group_smtf)
-showBullishGapsInput            = input.bool(true, "Bullish Gaps?", group = group_smtf, inline = "bull")
-bullGapColorInput               = input.color(#26a69a, "", group = group_smtf, inline = "bull")
-bullSmtFillLineColorInput       = input.color(#26a69a, "+ SMT-F Line", group = group_smtf, inline = "bull")
-showBearishGapsInput            = input.bool(true, "Bearish Gaps?", group = group_smtf, inline = "bear")
-bearGapColorInput               = input.color(#c4616c, "", group = group_smtf, inline = "bear")
-bearSmtFillLineColorInput       = input.color(#c4616c, "- SMT-F Line", group = group_smtf, inline = "bear")
-
 // ============================================================================
 // Dashboard
 // ============================================================================
 // Sequence table (4h / 1h PO3 sequence) — inputs
 // ============================================================================
 string group_seq                 = "Sequence Table  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-seq_show_input                   = input.bool(true, 'Show Sequence', group = group_seq, tooltip = 'Boom: 1m chart → 1H sequence (A: 15m → 5m, B: 15m → 1m)\nOther charts → 4H sequence (A: 1H → 5m, B: 30m → 3m)\nClassic: Fractal HTF, C2 CISD on the Fractal LTF, no lanes.\nBias = latest valid C2 close (C2 + its LTF CISD).')
+seq_show_input                   = input.bool(true, 'Show Sequence', group = group_seq, tooltip = 'Boom: 1m chart → 1H sequence (A: 15m → 3m, B: 15m → 1m)\nOther charts → 4H sequence (A: 1H → 5m, B: 30m → 3m)\nClassic: Fractal HTF, C2 CISD on the Fractal LTF, no lanes.\nBias = latest valid C2 close (C2 + its LTF CISD).')
 seq_c3_only_input                = input.bool(true, 'Conditions: C3 Only', group = group_seq, active = seq_show_input and not seq_classic, tooltip = 'On: lanes count only in C3. Off: in every candle after the C2.')
 seq_vert_input                   = input.string('Bottom', '', options = ['Top', 'Middle', 'Bottom'], inline = 'seq_loc', group = group_seq, active = seq_show_input)
 seq_horz_input                   = input.string('Right', '', options = ['Left', 'Center', 'Right'], inline = 'seq_loc', group = group_seq, active = seq_show_input)
@@ -668,7 +649,7 @@ seq_inv_input                    = input.color(#c4616c, 'Invalid', inline = 'seq
 // ============================================================================
 string group_perf               = 'Performance'
 bool calculate_on_close         = input.bool(true, 'Calculate on Close?', tooltip='When enabled, live setup detection only runs when LTF candles close (better performance).', group = group_perf)
-int calc_bars_input             = input.int(1000, 'Calculated Bars', minval = 100, maxval = 5000, group = group_perf, tooltip = 'HTF Profiler approach: the model, IC-CISD, SMT-Fill and HTF panels only run on the most recent bars.\nEach feature extends the window just enough to fill its HTF candles (capped at 5000 bars). Lower = faster, higher = more history.\nThe on-chart SMT families run on the full history, as in the Profiler (each family is gated by chart timeframe).')
+int calc_bars_input             = input.int(1000, 'Calculated Bars', minval = 100, maxval = 5000, group = group_perf, tooltip = 'HTF Profiler approach: the model, IC-CISD and HTF panels only run on the most recent bars.\nEach feature extends the window just enough to fill its HTF candles (capped at 5000 bars). Lower = faster, higher = more history.\nThe on-chart SMT families run on the full history, as in the Profiler (each family is gated by chart timeframe).')
 
 const int PERF_HTF_MAX_BARS     = 5000
 int chart_sec                   = timeframe.in_seconds()
@@ -1770,13 +1751,13 @@ if valid_htf and model_runtime
     htf.Update()
 
 // ============================================================================
-// SMT Engine — GXV SMT (HTF Profiler port) + SMT-Fill (QTSmtFillEngine)
+// SMT Engine — GXV SMT (HTF Profiler port)
 // ----------------------------------------------------------------------------
 // DATA -> RANGE -> SWEEP -> DIVERGENCE -> EVENT -> INVALIDATION -> PROJECTION
 // 13 families (15m … 12M). Each family compares the current range with the previous
 // range of the chart symbol and each pair; an SMT is live while the range develops and
 // confirmed at rollover; a line whose path crosses a candle body is filtered (not 12M).
-// Data: 2 chart-timeframe requests (one per pair) that also carry the SMT-Fill FVG payload.
+// Data: 2 chart-timeframe requests (one per pair): high, low, time, open, close.
 // ============================================================================
 
 tf_sec = chart_sec
@@ -2006,14 +1987,10 @@ if manualCorrelation
     corr_inv2 := corr_has_tertiary and manualPair2Inverse
 corr_pair1_configured := corr_base_ok and f_has_symbol(csym)
 corr_pair2_configured := corr_has_tertiary and f_has_symbol(tsym3)
-profilerCorrelationPayload() =>
-    [bullGap, bearGap, bullLow, bullHigh, bearLow, bearHigh, sourceHigh, sourceLow] = SMTF.corrReq()
-    [sourceHigh, sourceLow, time, open, close, bullGap, bearGap, bullLow, bullHigh, bearLow, bearHigh]
-
 string corr_fetch_sym1 = corr_pair1_configured ? csym : SMT_INVALID_SECONDARY
 string corr_fetch_sym2 = corr_pair2_configured ? tsym3 : SMT_INVALID_TERTIARY
-[xh0, xl0, xt0, xo0, xc0, p1BullRaw, p1BearRaw, p1BullLower, p1BullUpper, p1BearLower, p1BearUpper] = request.security(corr_fetch_sym1, timeframe.period, profilerCorrelationPayload(), gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
-[yh0, yl0, yt0, yo0, yc0, p2BullRaw, p2BearRaw, p2BullLower, p2BullUpper, p2BearLower, p2BearUpper] = request.security(corr_fetch_sym2, timeframe.period, profilerCorrelationPayload(), gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+[xh0, xl0, xt0, xo0, xc0] = request.security(corr_fetch_sym1, timeframe.period, [high, low, time, open, close], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
+[yh0, yl0, yt0, yo0, yc0] = request.security(corr_fetch_sym2, timeframe.period, [high, low, time, open, close], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_off, ignore_invalid_symbol=true)
 corr_pair1_ok := corr_pair1_configured and not na(xh0) and not na(xl0) and not na(xt0)
 corr_pair2_ok := corr_pair2_configured and not na(yh0) and not na(yl0) and not na(yt0)
 string smt_pair = corr_pair1_configured ? AC.getAssetTicker(csym) : ""
@@ -2689,57 +2666,6 @@ for [j, c] in smt_cy_idx
 f_smt_mark_historical_invalidations()
 f_smt_gc_events()
 
-// ── SMT-Fill / FVG engine (QTSmtFillEngine) ──
-p1High = xh0
-p1Low = xl0
-p2High = yh0
-p2Low = yl0
-var SMTF.Store smtf_store = SMTF.newStore()
-smtf_line_style = QTU.lineStyle(smtFillLineStyleInput)
-const int PERF_SMTF_RUNTIME_BARS = 200
-perf_smtf_runtime_on = runtimeOn(PERF_SMTF_RUNTIME_BARS)
-
-profilerSmtfSides(SMTF.Store state, map<int, int> previous) =>
-    current = map.new<int, int>()
-    for record in state.fvgRecords
-        current.put(record.c3Bar, record.side)
-    for record in state.fillOnlyRecords
-        current.put(record.c3Bar, record.side)
-    for sourceBar in state.archivedFvgBars
-        if previous.contains(sourceBar)
-            current.put(sourceBar, previous.get(sourceBar))
-    current
-profilerSmtfBox(box id, int side, bool filled) =>
-    if not na(id)
-        shade = color.new(side == 1 ? bullGapColorInput : bearGapColorInput, BiasOk(side) ? (filled ? 95 : 90) : 100)
-        box.set_bgcolor(id, shade)
-        box.set_border_color(id, shade)
-    0
-profilerSmtfRender(SMTF.Store state, map<int, int> sides) =>
-    rendered = 0
-    if state.fvgRecords.size() > 0
-        for i = state.fvgRecords.size() - 1 to 0
-            record = state.fvgRecords.get(i)
-            profilerSmtfBox(record.fvgBox, record.side, record.isFilled)
-            if not na(record.smtLine)
-                visible = BiasOk(record.side) and rendered < maxSmtFillsInput
-                line.set_color(record.smtLine, visible ? (record.side == 1 ? bullSmtFillLineColorInput : bearSmtFillLineColorInput) : #FFFFFF00)
-                if visible
-                    rendered += 1
-    for record in state.fillOnlyRecords
-        profilerSmtfBox(record.fvgBox, record.side, record.isFilled)
-    for [i, id] in state.archivedFvgBoxes
-        sourceBar = state.archivedFvgBars.get(i)
-        if sides.contains(sourceBar)
-            profilerSmtfBox(id, sides.get(sourceBar), true)
-    0
-var smtf_sides = map.new<int, int>()
-smtf_sides := profilerSmtfSides(smtf_store, smtf_sides)
-smtf_store := SMTF.run(smtf_store, perf_smtf_runtime_on, barstate.islast, maxGapsInput, maxGapsInput, extendFvgsToLastTouchInput, showOnlyCorrelatedInput, hideFilledFvgsInput, hideMitigatedFvgsInput, showSmtFillLinesInput, smtFillLineWidthInput, smtf_line_style, showBullishGapsInput, showBearishGapsInput, corr_pair1_ok, corr_pair2_ok, corr_inv1, corr_inv2, p1BullRaw, p1BearRaw, p1BullLower, p1BullUpper, p1BearLower, p1BearUpper, p1High, p1Low, p2BullRaw, p2BearRaw, p2BullLower, p2BullUpper, p2BearLower, p2BearUpper, p2High, p2Low, bullGapColorInput, bearGapColorInput, bullSmtFillLineColorInput, bearSmtFillLineColorInput)
-smtf_sides := profilerSmtfSides(smtf_store, smtf_sides)
-if barstate.islast
-    profilerSmtfRender(smtf_store, smtf_sides)
-
 // ============================================================================
 // HTF panels — data collection (chart bars, inside each panel's runtime window)
 // ============================================================================
@@ -2843,7 +2769,7 @@ if barstate.islast or barstate.isrealtime
 bool   seq_is_1h      = timeframe.in_seconds() == 60
 string seq_dir_tf     = model_tf
 string seq_a_sweep_tf = seq_is_1h ? '15' : '60'
-string seq_a_exec_tf  = '5'
+string seq_a_exec_tf  = seq_is_1h ? '3' : '5'
 string seq_b_sweep_tf = seq_is_1h ? '15' : '30'
 string seq_b_exec_tf  = seq_is_1h ? '1' : '3'
 
@@ -2857,6 +2783,7 @@ type SeqZ
     array<float> bot
     array<int>   dir     // 1 = BISI, -1 = SIBI
     array<int>   t       // time the FVG was confirmed
+    array<bool>  x       // traded through (BISI: low below its bottom, SIBI: high above its top)
     // the POI-TF candle being built from chart bars, and the two closed before it
     int   cT  = na
     float cH  = na
@@ -2872,13 +2799,17 @@ method drop(SeqZ z, int i) =>
     z.bot.remove(i)
     z.dir.remove(i)
     z.t.remove(i)
+    z.x.remove(i)
     z
 
-// POI zones of one timeframe built from the chart's bars (like the HTF panels), tT = time(POI TF) on this
-// bar. When a POI-TF candle closes: a wick that fully fills a zone removes it (BISI: low below its bottom,
-// SIBI: high above its top), then the FVG of the last three closed candles (BISI / SIBI) is added. Up to
-// 15 zones (the one farthest from price goes first).
-method zfeed(SeqZ z, int tT) =>
+SeqZNew() =>
+    SeqZ.new(array.new<float>(), array.new<float>(), array.new<int>(), array.new<int>(), array.new<bool>())
+
+// POI zones of one timeframe built from bars fed in (h / l / c: the chart's bars, or pair 1's), tT = time(POI TF)
+// on this bar. Every bar marks the zones it trades through (BISI: low below its bottom, SIBI: high above its
+// top); when a POI-TF candle closes those are removed, then the FVG of the last three closed candles
+// (BISI / SIBI) is added. Up to 15 zones (the one farthest from price goes first).
+method zfeed(SeqZ z, int tT, float h, float l, float c) =>
     if not na(tT) and (na(z.cT) or tT != z.cT)
         if not na(z.cT)
             float h1 = z.cH
@@ -2886,7 +2817,7 @@ method zfeed(SeqZ z, int tT) =>
             int n = z.top.size()
             if n > 0
                 for i = n - 1 to 0
-                    if z.dir.get(i) == 1 ? l1 < z.bot.get(i) : h1 > z.top.get(i)
+                    if z.x.get(i)
                         z.drop(i)
             int  gd = FvgDir(z.pH2, z.pL2, h1, l1)
             bool bu = gd == 1
@@ -2896,6 +2827,7 @@ method zfeed(SeqZ z, int tT) =>
                 z.bot.push(bu ? z.pH2 : h1)
                 z.dir.push(bu ? 1 : -1)
                 z.t.push(tT)
+                z.x.push(false)
                 if z.top.size() > 15
                     int   fi = 0
                     float fd = -1.0
@@ -2910,12 +2842,15 @@ method zfeed(SeqZ z, int tT) =>
             z.pH1 := h1
             z.pL1 := l1
         z.cT := tT
-        z.cH := high
-        z.cL := low
+        z.cH := h
+        z.cL := l
     else
-        z.cH := math.max(z.cH, high)
-        z.cL := math.min(z.cL, low)
-    z.cC := close
+        z.cH := math.max(z.cH, h)
+        z.cL := math.min(z.cL, l)
+    z.cC := c
+    for [i, tp] in z.top
+        if z.dir.get(i) == 1 ? l < z.bot.get(i) : h > tp
+            z.x.set(i, true)
     z
 
 // Nearest zone of side dir that was already active at t1 and overlaps the C1–C2 range bot–top:
@@ -3186,7 +3121,7 @@ int SEQ_BOOM = 95
 // ── Lanes + C2 tracker + POI zones, fed every chart bar ──
 string seq_c2_exec_tf = seq_classic ? getFractalLTF() : seq_is_1h ? '5' : '15'     // C2's paired LTF CISD (Boom: 1H → 5m, 4H → 15m; Classic: Fractal LTF)
 // POI timeframes, the model's own first (it wins a tie). Boom: 1H sequence 1H / 15m / 4H / D,
-// 4H sequence 4H / 1H / D. Classic: 15m / 30m / 1H model 15m / 1H / 4H, 4H model 1H / 4H / D,
+// 4H sequence 4H / 1H / 15m / D. Classic: 15m / 30m / 1H model 15m / 1H / 4H, 4H model 1H / 4H / D,
 // D / W / M model its own timeframe.
 int    seq_ms         = timeframe.in_seconds(seq_dir_tf)
 bool   seq_tf_ok      = timeframe.in_seconds() >= 60 and seq_ms > timeframe.in_seconds()  // model above the chart
@@ -3196,10 +3131,10 @@ bool   seq_cl_4h      = seq_classic and seq_ms == 14400
 bool   seq_cl_one     = seq_classic and not seq_cl_low and not seq_cl_4h
 string seq_poi_tf1    = seq_cl_one ? seq_dir_tf : seq_cl_low ? (seq_ms == 3600 ? '60' : '15') : seq_cl_4h ? '240' : seq_is_1h ? '60' : '240'
 string seq_poi_tf2    = seq_cl_one ? seq_dir_tf : seq_cl_low ? (seq_ms == 3600 ? '15' : '60') : seq_cl_4h ? '60' : seq_is_1h ? '15' : '60'
-string seq_poi_tf3    = seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : seq_cl_4h ? 'D' : seq_is_1h ? '240' : 'D'
+string seq_poi_tf3    = seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : seq_cl_4h ? 'D' : seq_is_1h ? '240' : '15'
 string seq_poi_tf4    = seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : 'D'
-int    seq_poi_n      = seq_cl_one ? 1 : seq_classic or not seq_is_1h ? 3 : 4
-string seq_poi_all    = seq_cl_one ? PanelLabel(seq_dir_tf) : seq_cl_low ? '15m/1H/4H' : seq_cl_4h or not seq_is_1h ? '1H/4H/D' : '15m/1H/4H/D'
+int    seq_poi_n      = seq_cl_one ? 1 : seq_classic ? 3 : 4
+string seq_poi_all    = seq_cl_one ? PanelLabel(seq_dir_tf) : seq_cl_low ? '15m/1H/4H' : seq_cl_4h ? '1H/4H/D' : '15m/1H/4H/D'
 if seq_hi or not seq_tf_ok
     seq_poi_tf1 := timeframe.period
     seq_poi_tf2 := timeframe.period
@@ -3243,7 +3178,9 @@ int    seq_bWc  = time_close(seq_bwtf)
 var array<bool> seq_lnOk = array.from(true, true, true, true)   // A sweep, A entry, B sweep, B entry tracked
 // POI zones from each POI timeframe's candles, built from the chart's bars (closed candles only → no
 // repaint, no data requests); a POI timeframe below the chart has no zones
-var array<SeqZ> seq_poi = array.from(SeqZ.new(array.new<float>(), array.new<float>(), array.new<int>(), array.new<int>()), SeqZ.new(array.new<float>(), array.new<float>(), array.new<int>(), array.new<int>()), SeqZ.new(array.new<float>(), array.new<float>(), array.new<int>(), array.new<int>()), SeqZ.new(array.new<float>(), array.new<float>(), array.new<int>(), array.new<int>()))
+var array<SeqZ> seq_poi = array.from(SeqZNew(), SeqZNew(), SeqZNew(), SeqZNew())
+// the same zones built from pair 1's bars (SMT fill)
+var array<SeqZ> seq_poq = array.from(SeqZNew(), SeqZNew(), SeqZNew(), SeqZNew())
 // time() only on a POI timeframe not below the chart
 PoiTf(string tf) =>
     timeframe.in_seconds(tf) >= timeframe.in_seconds() ? tf : timeframe.period
@@ -3252,7 +3189,9 @@ array<string> seq_poiF = array.from(seq_poi_tf1, seq_poi_tf2, seq_poi_tf3, seq_p
 if seq_tf_ok and not seq_hi
     for [k, z] in seq_poi
         if k < seq_poi_n and timeframe.in_seconds() <= timeframe.in_seconds(seq_poiF.get(k))
-            z.zfeed(seq_poiT.get(k))
+            z.zfeed(seq_poiT.get(k), high, low, close)
+            if not na(pr1h) and not na(pr1l)
+                seq_poq.get(k).zfeed(seq_poiT.get(k), pr1h, pr1l, pr1c)
 if (seq_show_input or alerts_enabled_input) and seq_tf_ok
     // C2 tracker: the chart's bar, or the C2 CISD-TF candles inside it (no 1m data needed)
     // then Boom lanes A / B, each on its entry timeframe (no 1m data needed on charts at or below it).
@@ -3267,14 +3206,20 @@ if (seq_show_input or alerts_enabled_input) and seq_tf_ok
         seq_lnOk := lk
 
 // ── Setup probability score of a C2 (dir) with C1 = c1H/c1L opened at c1T, C2 = c2H/c2L at c2T ──
-// SMT-Fill (QTSmtFillEngine record of the bias side, from C1 open on) and SMT (any SMT family
-// event of the bias side detected from C2 open on)
-SeqSmtChk(int dir, int c1T, int c2T) =>
+// SMT fill: a POI-TF FVG of the bias side (bull BISI / bear SIBI) on the same candles in both symbols (chart +
+// pair 1), formed before the C2 opened, traded through by neither yet (C2 included), and touched by exactly
+// one symbol's C2 low (bull) / high (bear) (qH / qL = pair 1's C2 high / low). SMT: any SMT family event
+// of the bias side detected from C2 open on.
+SeqSmtChk(int dir, int c2T, float c2H, float c2L, float qH, float qL) =>
     bool fill = false
-    if not na(c1T)
-        for rec in smtf_store.fvgRecords
-            if rec.isSmtFill and rec.side == dir and not na(rec.smtEndTime) and rec.smtEndTime >= c1T
-                fill := true
+    if not na(qH) and not na(qL) and not seq_hi
+        for [k, m] in seq_poi
+            SeqZ q = seq_poq.get(k)
+            if k < seq_poi_n
+                for [i, mt] in m.top
+                    int j = q.t.indexof(m.t.get(i))
+                    if j >= 0 and m.dir.get(i) == dir and q.dir.get(j) == dir and m.t.get(i) <= c2T and not m.x.get(i) and not q.x.get(j)
+                        fill := fill or ((dir == 1 ? c2L <= mt : c2H >= m.bot.get(i)) != (dir == 1 ? qL <= q.top.get(j) : qH >= q.bot.get(j)))
     int s = seq_smt_mark.get(dir == 1 ? 0 : 1)
     [fill, not na(s) and not na(c2T) and s >= c2T]
 // The C2 tracker's track of the C2 that opened at c2T (this candle or the previous one)
@@ -3285,7 +3230,7 @@ SeqC2Track(int dir, int c2T) =>
     else if seq_lc2.pdId == c2T
         tr := dir == 1 ? seq_lc2.pbu : seq_lc2.pbe
     tr
-SeqScore(int dir, float c1H, float c1L, int c1T, float c2H, float c2L, int c2T) =>
+SeqScore(int dir, float c1H, float c1L, int c1T, float c2H, float c2L, int c2T, float qH, float qL) =>
     bool bull = dir == 1
     SeqTrack tr = SeqC2Track(dir, c2T)
     bool fC = not na(tr) and tr.s and tr.e
@@ -3307,7 +3252,7 @@ SeqScore(int dir, float c1H, float c1L, int c1T, float c2H, float c2L, int c2T) 
                 sc.pDir := dir
                 sc.pTop := z.top.get(i)
                 sc.pBot := z.bot.get(i)
-    [fFill, fSmt] = SeqSmtChk(dir, c1T, c2T)
+    [fFill, fSmt] = SeqSmtChk(dir, c2T, c2H, c2L, qH, qL)
     bool fP = sc.pTf >= 0 or fFill
     sc.f := array.from(fC, f75, fP, fSmt, fP and fSmt, fFill)
     sc
@@ -3333,6 +3278,8 @@ SeqPts(SeqSc s) =>
 var float seq_dH    = na
 var float seq_dL    = na
 var float seq_dC    = na
+var float seq_qH    = na    // pair 1 high / low of the current sequence candle (SMT fill)
+var float seq_qL    = na
 var float seq_dOp   = na    // open price of the current sequence candle
 var int   seq_dO    = na    // open time of the current sequence candle
 var bool  seq_dEval = false
@@ -3380,10 +3327,10 @@ SeqCG(SeqTrack t, int ms, bool star) =>
     g >= 3 ? 'A' : g == 2 ? 'B' : 'C'
 SeqPx(float p) =>
     na(p) ? '—' : str.tostring(p, format.mintick)
-// table / ledger prices: up to 2 decimals on instruments priced 1000+ (gold, indices) keep cells narrow and
-// still read the same as the chart line (4011.5, not a rounded 4012)
+// table / ledger prices: whole numbers on instruments priced 1000+ (gold, indices, BTC; user); below
+// that the tick format (FX / oil would lose the price if rounded)
 TbPx(float p) =>
-    na(p) ? '—' : close >= 1000 ? str.tostring(p, '#.##') : str.tostring(p, format.mintick)
+    na(p) ? '—' : close >= 1000 ? str.tostring(p, '#') : str.tostring(p, format.mintick)
 SeqTp(int k) =>
     float r = math.abs(seq_E - seq_SL)
     k < seq_tpD.size() and not na(seq_E) and not na(seq_SL) ? seq_E + (seq_E >= seq_SL ? r : -r) * seq_tpD.get(k) : na
@@ -3483,7 +3430,7 @@ for k = 0 to 1
     // k = 0: fallback check of the previous candle on the new candle's first bar; k = 1: final bar
     if seq_tf_ok and (k == 0 ? seq_newD and not na(seq_dH) and not seq_dEval : not seq_dEval and barstate.isconfirmed and time_close == time_close(seq_dir_tf))
         int d = SeqC2Dir(seq_pcH, seq_pcL, seq_dOp, seq_dH, seq_dL, seq_dC)
-        SeqSc f = d != 0 ? SeqScore(d, seq_pcH, seq_pcL, seq_pcT, seq_dH, seq_dL, seq_dO) : seq_pF
+        SeqSc f = d != 0 ? SeqScore(d, seq_pcH, seq_pcL, seq_pcT, seq_dH, seq_dL, seq_dO, seq_qH, seq_qL) : seq_pF
         seq_pDir := 0
         if d != 0 and f.f.get(0)
             seq_bias   := d
@@ -3520,6 +3467,8 @@ for k = 0 to 1
         if seq_newD or na(seq_dO)
             seq_dH     := high
             seq_dL     := low
+            seq_qH     := pr1h
+            seq_qL     := pr1l
             seq_dC     := close
             seq_dOp    := open
             seq_dO     := seq_dT
@@ -3534,6 +3483,8 @@ for k = 0 to 1
         else
             seq_dH := math.max(seq_dH, high)
             seq_dL := math.min(seq_dL, low)
+            seq_qH := math.max(nz(seq_qH, pr1h), nz(pr1h, seq_qH))
+            seq_qL := math.min(nz(seq_qL, pr1l), nz(pr1l, seq_qL))
             seq_dC := close
         // C3–C5 that takes the C2's protected extreme (bull: C2 low) invalidates that C2
         if seq_dcnum >= 3 and seq_dcnum <= seq_cLast and seq_dbias != 0 and (seq_dbias == 1 ? seq_dL < seq_c2X : seq_dH > seq_c2X)
@@ -3545,7 +3496,7 @@ for k = 0 to 1
             bool tH = seq_dH > seq_pcH
             seq_wD := tL and tH ? (seq_dC > seq_dOp ? 1 : seq_dC < seq_dOp ? -1 : 0) : tL ? 1 : tH ? -1 : 0
             if seq_wD != 0
-                seq_wF := SeqScore(seq_wD, seq_pcH, seq_pcL, seq_pcT, seq_dH, seq_dL, seq_dO)
+                seq_wF := SeqScore(seq_wD, seq_pcH, seq_pcL, seq_pcT, seq_dH, seq_dL, seq_dO, seq_qH, seq_qL)
 
 if seq_tf_ok and not seq_dEval
     // pending C2: its CISD inside the window confirms it → this candle becomes C3; the window ends
@@ -3822,7 +3773,7 @@ C2Tag(CandleSet cs, Setup s, int ci) =>
         // [SSOT] the table's C2 carries the table's own score (taken at its close); other C2s are scored the same way
         SeqSc sc = seq_scF
         if k2.o_time != seq_c2T or (s.is_bullish ? 1 : -1) != seq_bias
-            sc := SeqScore(s.is_bullish ? 1 : -1, k1.h, k1.l, k1.o_time, k2.h, k2.l, k2.o_time)
+            sc := SeqScore(s.is_bullish ? 1 : -1, k1.h, k1.l, k1.o_time, k2.h, k2.l, k2.o_time, na, na)   // the tag reads SMT + POI, not SMT fill
         t += (sc.f.get(3) ? '+SMT' : '') + (sc.pTf >= 0 ? '+FVG' : '')
     t
 
