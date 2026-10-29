@@ -3,13 +3,17 @@ improved Athenas Boom for rookies
 
 ## Boom° B33# — extended edition
 
-Based on Boom° v3 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation, now C3–C6), hardened, with trade management and actionable alerts.
+Based on Boom° v4 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence and every v2 feature (panel C-labels Live / Confirmed with the ● dot, entry-TF lanes, chart-built POI zones, C3–C5 invalidation, now C3–C6), hardened, with trade management and actionable alerts.
 
-**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b25 · 98,349 / 100,256 compiled tokens
+**Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b26 · 98,336 / 100,256 compiled tokens
 
 ## Other Pine v6 platforms (e.g. tradeuniv.com)
 
 `Boom B33 standalone.pine` is the same build with both libraries pasted in (no `import` lines): `Gregorius_XV/GXVAssetCorrelationUtils/1` as `AC_*` and `Gregorius_XV/GXVUtils/12` as `QTU_*`. Paste it as one indicator. The library sources are in `libs/` (MPL 2.0; GXVAssetCorrelationUtils © fstarcapital, fork by Gregorius_XV; GXVUtils by Gregorius_XV).
+
+## Build b26 — rebased on Boom° v4
+
+Athena's update, all in: SMT fill removed again (C2 score = CISD 75 · 75% rule 5 · POI 10 · SMT 5 · POI+SMT 5); POI zones come from each POI timeframe's own candles again (`request.security`), so our v3 `na(cT)` fix is no longer needed; the POI row shows `platform err` when a POI timeframe returns no data; pairing: MNQ ↔ MES and NQ ↔ ES futures (also `/MNQ` / `/NQ` NinjaTrader-style feeds, + MYM / YM in Triad), NAS100 CFDs ↔ MES. Everything of ours kept (C5 / C6, palette, whole-number table prices, ★ POI origin, trade management, ledger, alerts).
 
 ## Build b25 — rebased on Boom° v3
 
