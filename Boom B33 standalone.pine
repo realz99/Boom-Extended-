@@ -7,7 +7,7 @@
 indicator('Boom° B33# standalone', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 
 // ============================================================================
-// Library GXVAssetCorrelationUtils_v1.pine inlined as AC_* (was: import ... as AC)
+// Library GXVAssetCorrelationUtils_v1.pine inlined as AC_* (was: import ... as AC): the 52 of 54 definitions Boom uses
 // This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © fstarcapital
 // ============================================================================
@@ -39,7 +39,7 @@ indicator('Boom° B33# standalone', shorttitle = 'Boom° B33#', overlay = true, 
 //   // On Gold: secondary = "FOREXCOM:XAUEUR", tertiary = "FOREXCOM:XAUGBP"
 //   // On Silver: secondary = "OANDA:XAGEUR", tertiary = "OANDA:XAGGBP"
 //   // On YM: secondary = "CME_MINI:ES1!", tertiary = "CME_MINI:NQ1!"  (RTY excluded)
-//   // On Copper, Russell or anything else: identical to resolveCurrentChart(false)
+//   // On Copper, Russell or anything else: identical to AC_resolveCurrentChart(false)
 //
 // SUPPORTED ASSET CLASSES
 // ----------------------
@@ -52,7 +52,7 @@ indicator('Boom° B33# standalone', shorttitle = 'Boom° B33#', overlay = true, 
 //   Crypto:   BTC, ETH, SOL, XRP, DOGE, ADA, BNB, TAO, ZEC
 //
 //   For the exact result of every mode on every symbol, read the
-//   AUTO MODE MATRIX. It is above the resolveAssets() declaration.
+//   AUTO MODE MATRIX. It is above the AC_resolveAssets() declaration.
 //
 // - - - - - - - - -
 
@@ -76,7 +76,6 @@ type AC_AssetPairing
     bool   invertSecondary = false
     bool   invertTertiary  = false
     bool   invertQuaternary = false
-
 // @type Full asset resolution result with mode detection and computed values
 // @field detected Whether auto-detection succeeded
 // @field isDyadMode True if exactly one correlated asset was resolved
@@ -104,7 +103,6 @@ type AC_AssetConfig
     string assetCategory   = "unknown"
     string correlationMode = "Classic"
     string correlationType = "Triad"
-
 // - - - - - - - - -
 // Preserved QT Feed / Alias Helpers
 // - - - - - - - - -
@@ -117,7 +115,6 @@ type AC_AssetConfig
 AC_indexProviderAllowed(string assetType, string assetCategory, string chartId, string candidateId) =>
     bool indexCategory = assetCategory == "index_cfd" or assetCategory == "eu_stocks" or (assetType == "index" and (assetCategory == "fallback" or assetCategory == "unknown"))
     not indexCategory or (candidateId != "" and str.upper(syminfo.prefix(candidateId)) == str.upper(syminfo.prefix(chartId)))
-
 // One policy owner for all automatic resolver entry points. Keep category identity
 // even if the provider is unsupported; never promote/relabel another pair or use
 // a foreign fallback. FX indices, futures and other CFD categories are unchanged.
@@ -141,68 +138,49 @@ AC_f_apply_index_provider_policy(AC_AssetConfig config, string assetType, string
         config.isQuadMode := config.isTetradMode
         config.correlationType := count == 3 ? "Tetrad" : count == 2 ? "Triad" : "Dyad"
     config
-
 AC_f_norm(string s) =>
     str.upper(str.replace_all(str.replace_all(na(s) ? "" : s, " ", ""), "-", ""))
-
 AC_f_symbol_only(string s) =>
     string u = AC_f_norm(s)
     str.contains(u, ":") ? array.get(str.split(u, ":"), 1) : u
-
 AC_f_exchange_prefix(string s) =>
     string u = AC_f_norm(s)
     string[] parts = str.split(u, ":")
     array.size(parts) > 1 ? array.get(parts, 0) : ""
-
 AC_f_same_feed_fx(string tickerId, string ticker) =>
     string prefix = AC_f_exchange_prefix(tickerId)
     string feed = prefix != "" and prefix != "TVC" ? prefix : "FX"
     feed + ":" + ticker
-
 AC_f_same_feed_energy(string tickerId, string ticker) =>
     string prefix = AC_f_exchange_prefix(tickerId)
     string feed = prefix != "" ? prefix : "TVC"
     feed + ":" + ticker
-
 AC_f_is_index_cfd_us100(string s) =>
     str.contains(s, "US100") or str.contains(s, "NAS100") or str.contains(s, "NDX") or str.contains(s, "USTEC")
-
 AC_f_is_index_cfd_us500(string s) =>
     str.contains(s, "US500") or str.contains(s, "SP500") or str.contains(s, "SPX500")
-
 AC_f_is_index_cfd_us30(string s) =>
     str.contains(s, "US30") or str.contains(s, "DJ30")
-
 AC_f_is_fx_eurusd(string s) =>
     str.contains(s, "EURUSD")
-
 AC_f_is_fx_gbpusd(string s) =>
     str.contains(s, "GBPUSD")
-
 AC_f_is_fx_dxy(string s) =>
     str.contains(s, "DXY") or str.contains(s, "DXYUSD")
-
 AC_f_is_fx_usdjpy(string s) =>
     str.contains(s, "USDJPY")
-
 AC_f_is_fx_usdchf(string s) =>
     str.contains(s, "USDCHF")
-
 AC_f_is_fx_usdcad(string s) =>
     str.contains(s, "USDCAD")
-
 AC_f_is_fx_audusd(string s) =>
     str.contains(s, "AUDUSD")
-
 AC_f_is_fx_nzdusd(string s) =>
     str.contains(s, "NZDUSD")
-
 AC_f_is_energy_cfd_usoil(string s) =>
     str.contains(s, "USOIL")
-
 AC_f_is_energy_cfd_ukoil(string s) =>
     str.contains(s, "UKOIL")
-
 // - - - - - - - - -
 // Futures Detector Functions
 // - - - - - - - - -
@@ -263,7 +241,6 @@ AC_detectIndicesFutures(string ticker) =>
         result.invertTertiary := false
 
     result
-
 // @function Detects Index Futures in GXT Mode (NQ/ES/YM triad — RTY excluded)
 // @param ticker The ticker string to check (typically syminfo.ticker)
 // @returns AC_AssetPairing with GXT secondary and tertiary assets (empty for RTY/M2K — falls through to default)
@@ -303,7 +280,6 @@ AC_detectIndicesFuturesGxt(string ticker) =>
     // Russell (RTY/M2K) — not supported in GXT, returns empty to fall through to default
 
     result
-
 // @function Detects Metal Futures (GC/SI/HG + micro variants)
 // @param ticker The ticker string to check
 // @returns AC_AssetPairing with secondary and tertiary assets configured
@@ -348,7 +324,6 @@ AC_detectMetalsFutures(string ticker) =>
         result.invertTertiary := false
     
     result
-
 // @function Detects Metal Futures in Quad Mode (Gold→SI/XAUEUR/XAUGBP, Silver→GC/XAGEUR/XAGGBP)
 // @param ticker The ticker string to check
 // @returns AC_AssetPairing with futures secondary + GXT cross-pairs as tertiary/quaternary (empty for copper — falls through to default)
@@ -378,7 +353,6 @@ AC_detectMetalsFuturesQuad(string ticker) =>
     // Copper (HG/MHG) — not supported in Quad, returns empty to fall through to default
     
     result
-
 // @function Detects Metal Futures in GXT Mode (Gold→XAUEUR/XAUGBP, Silver→XAGEUR/XAGGBP)
 // @param ticker The ticker string to check
 // @returns AC_AssetPairing with GXT secondary and tertiary assets (empty for copper — falls through to default)
@@ -404,7 +378,6 @@ AC_detectMetalsFuturesGxt(string ticker) =>
     // Copper (HG/MHG) — not supported in GXT, returns empty to fall through to default
     
     result
-
 // @function Detects Forex Futures (6E/6B + micro variants)
 // @param ticker The ticker string to check
 // @returns AC_AssetPairing with secondary and tertiary assets configured
@@ -433,7 +406,6 @@ AC_detectForexFutures(string ticker) =>
         result.invertTertiary := true
     
     result
-
 // @function Detects Energy Futures (CL/RB/HO + micro variants)
 // @param ticker The ticker string to check
 // @returns AC_AssetPairing with secondary and tertiary assets configured
@@ -472,7 +444,6 @@ AC_detectEnergyFutures(string ticker) =>
         result.invertTertiary := false
     
     result
-
 // @function Detects Treasury Futures (ZB/ZF/ZN)
 // @param ticker The ticker string to check
 // @returns AC_AssetPairing with secondary and tertiary assets configured
@@ -496,7 +467,6 @@ AC_detectTreasuryFutures(string ticker) =>
         result.invertTertiary := false
     
     result
-
 // @function Detects CME Crypto Futures (BTC/ETH + micro variants)
 // @param ticker The ticker string to check
 // @returns AC_AssetPairing with secondary and tertiary assets configured
@@ -525,7 +495,6 @@ AC_detectCryptoFutures(string ticker) =>
         result.invertTertiary := false
     
     result
-
 // @function Detects CAD Forex Futures (6C + micro variants)
 // @param ticker The ticker string to check
 // @returns AC_AssetPairing with secondary and tertiary assets configured
@@ -547,7 +516,6 @@ AC_detectCADFutures(string ticker) =>
         result.invertTertiary := true    // M6C moves opposite to DXY
     
     result
-
 // - - - - - - - - -
 // CFD Detector Functions
 // - - - - - - - - -
@@ -585,7 +553,6 @@ AC_detectForexCFD(string ticker, string tickerId) =>
         result.tertiary := AC_f_is_fx_usdcad(sym) ? "CME:6C1!" : AC_f_is_fx_usdjpy(sym) ? "CME:6J1!" : "CME:6S1!"
         result.invertTertiary := true
     result
-
 // @function Detects the USOIL/UKOIL energy CFD correlation layer
 // @param ticker The ticker string to check
 // @param tickerId The full ticker ID for the current chart asset
@@ -661,7 +628,6 @@ AC_detectCrypto(string ticker, string tickerId) =>
         result.invertTertiary := false
     
     result
-
 // @function Detects Metals CFD (XAU/XAG/Copper + EUR/GBP cross-pairs)
 // @param ticker The ticker string to check
 // @param tickerId The full ticker ID for primary asset
@@ -707,7 +673,6 @@ AC_detectMetalsCFD(string ticker, string tickerId) =>
         result.invertTertiary := false
     
     result
-
 // @function Detects Metals CFD in GXT Mode (XAUUSD→XAUEUR/XAUGBP, XAGUSD→XAGEUR/XAGGBP)
 // @param ticker The ticker string to check
 // @param tickerId The full ticker ID for primary asset
@@ -744,7 +709,6 @@ AC_detectMetalsCFDGxt(string ticker, string tickerId) =>
     // COPPER — not supported in GXT, returns empty to fall through to default
     
     result
-
 // @function Detects Metals CFD in Quad Mode (XAUUSD→XAGUSD/XAUEUR/XAUGBP, XAGUSD→XAUUSD/XAGEUR/XAGGBP, cross-pairs→USD base/correlated metal/opposite cross)
 // @param ticker The ticker string to check
 // @param tickerId The full ticker ID for primary asset
@@ -786,7 +750,6 @@ AC_detectMetalsCFDQuad(string ticker, string tickerId) =>
     // Copper — not supported in Quad CFD, returns empty to fall through
     
     result
-
 // @function Preserved QT Index CFD layer (US100/US500/US30 aliases)
 // @param ticker The ticker string to check
 // @param tickerId The full ticker ID for primary asset
@@ -807,7 +770,6 @@ AC_detectIndicesCFD(string ticker, string tickerId) =>
         result.secondary := "CAPITALCOM:US100"
         result.tertiary := "CAPITALCOM:US500"
     result
-
 // @function Detects EU Stock Indices (GER40/EU50) - Dyad only
 // @param ticker The ticker string to check
 // @param tickerId The full ticker ID for primary asset
@@ -825,7 +787,6 @@ AC_detectEUStocks(string ticker, string tickerId) =>
         result.invertSecondary := false
     
     result
-
 // - - - - - - - - -
 // Fallback Defaults
 // - - - - - - - - -
@@ -841,7 +802,6 @@ AC_getDefaultFallback(string tickerId) =>
     result.tertiary := ""
     result.invertTertiary := false
     result
-
 // - - - - - - - - -
 // Utility Functions
 // - - - - - - - - -
@@ -852,30 +812,25 @@ AC_getDefaultFallback(string tickerId) =>
 // @returns Modified ticker string with session and backadjustment.on applied
 AC_applySessionModifierWithBackadjust(string tickerStr, string sessionType) =>
     ticker.modify(tickerStr, session = sessionType, backadjustment = backadjustment.on)
-
 // @function Applies futures session modifier to ticker WITHOUT back adjustment
 // @param tickerStr The ticker to modify
 // @param sessionType The session type (syminfo.session)
 // @returns Modified ticker string with session and backadjustment.off applied
 AC_applySessionModifierNoBackadjust(string tickerStr, string sessionType) =>
     ticker.modify(tickerStr, session = sessionType, backadjustment = backadjustment.off)
-
 // @function Checks if a pairing represents a valid triad (3 assets)
 // @param pairing The AC_AssetPairing to check
 // @returns True if tertiary is non-empty (triad mode), false for dyad
 AC_isTriadMode(AC_AssetPairing pairing) =>
     pairing.tertiary != ""
-
 // @function Checks if a pairing contains a fourth asset
 AC_isTetradMode(AC_AssetPairing pairing) =>
     pairing.quaternary != ""
-
 // @function Extracts clean ticker string from full ticker ID
 // @param tickerId The full ticker ID (e.g., "BITGET:BTCUSDT.P")
 // @returns Clean ticker string (e.g., "BTCUSDT.P")
 AC_getAssetTicker(string tickerId) =>
     str.tostring(syminfo.ticker(tickerId))
-
 // - - - - - - - - -
 // Triad/Dyad Resolution (Inversion Logic)
 // - - - - - - - - -
@@ -916,7 +871,6 @@ AC_resolveTriad(string chartTickerId, AC_AssetPairing pairing) =>
         invertTertiary := true
     
     [primaryAsset, secondaryAsset, tertiaryAsset, invertSecondary, invertTertiary]
-
 // @function Resolves dyad asset assignment with proper inversion flag
 // @param chartTickerId The current chart's ticker ID
 // @param pairing The detected AC_AssetPairing (dyad: tertiary is empty)
@@ -940,7 +894,6 @@ AC_resolveDyad(string chartTickerId, AC_AssetPairing pairing) =>
         invertSecondary := true
     
     [primaryAsset, secondaryAsset, invertSecondary]
-
 // @function Resolves quad asset assignments with proper inversion flags (4 assets, primary-only divergences)
 // @param chartTickerId The current chart's ticker ID (syminfo.tickerid)
 // @param pairing The detected AC_AssetPairing with quaternary populated
@@ -992,11 +945,6 @@ AC_resolveQuad(string chartTickerId, AC_AssetPairing pairing) =>
         invertQuaternary := true
     
     [primaryAsset, secondaryAsset, tertiaryAsset, quaternaryAsset, invertSecondary, invertTertiary, invertQuaternary]
-
-// @function Tetrad-named alias for the legacy AC_resolveQuad() export
-AC_resolveTetrad(string chartTickerId, AC_AssetPairing pairing) =>
-    AC_resolveQuad(chartTickerId, pairing)
-
 // - - - - - - - - -
 // Main Entry Point
 // - - - - - - - - -
@@ -1018,7 +966,7 @@ AC_resolveTetrad(string chartTickerId, AC_AssetPairing pairing) =>
 //   AC.AssetConfig config = AC.resolveCurrentChart(gxt)
 //   // On Gold/Silver charts with GXT: remaps to XAUEUR/XAUGBP or XAGEUR/XAGGBP
 //   // On NQ/ES/YM charts with GXT: the other two of the trio, RTY excluded
-//   // On all other charts: behaves identically to resolveCurrentChart(false)
+//   // On all other charts: behaves identically to AC_resolveCurrentChart(false)
 //
 // PATTERN 3 — Off / Auto / Manual tri-state
 //   string  preset = input.string('Auto', 'Correlation Mode', options=['Off','Auto','Manual'])
@@ -1045,8 +993,8 @@ AC_resolveTetrad(string chartTickerId, AC_AssetPairing pairing) =>
 //   AC.AssetConfig config = AC.resolveAssets(
 //       syminfo.ticker, syminfo.tickerid, syminfo.type, syminfo.session,
 //       forceETH, divMode == 'Triad (GXT)')
-//   // Use resolveAssets() when you need to control backadjustment explicitly.
-//   // Use resolveCurrentChart() for most indicators (defaults to backadjust on).
+//   // Use AC_resolveAssets() when you need to control backadjustment explicitly.
+//   // Use AC_resolveCurrentChart() for most indicators (defaults to backadjust on).
 //
 // ASSETCONFIG FIELDS
 // ------------------
@@ -1067,9 +1015,9 @@ AC_resolveTetrad(string chartTickerId, AC_AssetPairing pairing) =>
 // The tables are the branches of the detector functions, in resolution order.
 //
 // HOW A MODE MAPS TO THE PARAMETERS
-//   Triad         resolveCurrentChart()             gxtMode = false, quadMode = false
-//   Triad (GXT)   resolveCurrentChart(true)         gxtMode = true
-//   Tetrad        resolveCurrentChart(false, true)  quadMode = true
+//   Triad         AC_resolveCurrentChart()             gxtMode = false, quadMode = false
+//   Triad (GXT)   AC_resolveCurrentChart(true)         gxtMode = true
+//   Tetrad        AC_resolveCurrentChart(false, true)  quadMode = true
 //   Dyad          Not a library mode. Call the Triad branch. Then set
 //                 config.tertiary := "" and config.isTriadMode := false yourself.
 //
@@ -1247,7 +1195,7 @@ AC_resolveTetrad(string chartTickerId, AC_AssetPairing pairing) =>
 // @param gxtMode When true, metals (Gold/Silver) use currency-cross triads (XAUEUR/XAUGBP, XAGEUR/XAGGBP) instead of standard metal correlations, and index futures use the NQ/ES/YM triad (RTY excluded). Copper and Russell fall back to default.
 // @param quadMode When true, metals use futures secondary + GXT cross-pairs as tertiary/quaternary (e.g., GC→SI/XAUEUR/XAUGBP). Takes priority over gxtMode for metals.
 // @returns AC_AssetConfig with fully resolved assets, inversion flags, and detection status
-resolveAssets(string ticker, string tickerId, string assetType, string sessionType, bool useBackadjust, bool gxtMode = false, bool quadMode = false) =>
+AC_resolveAssets(string ticker, string tickerId, string assetType, string sessionType, bool useBackadjust, bool gxtMode = false, bool quadMode = false) =>
     AC_AssetConfig config = AC_AssetConfig.new()
     AC_AssetPairing pairing = AC_AssetPairing.new()
     bool found = false
@@ -1447,25 +1395,23 @@ resolveAssets(string ticker, string tickerId, string assetType, string sessionTy
     config.correlationType := isQuad ? "Tetrad" : isTriad ? "Triad" : "Dyad"
 
     AC_f_apply_index_provider_policy(config, assetType, tickerId)
-
 // - - - - - - - - -
 // Simplified Entry Point (uses syminfo defaults)
 // - - - - - - - - -
-// Use resolveCurrentChart() for most indicators — it handles session and
-// backadjustment automatically. Use resolveAssets() only when you need
+// Use AC_resolveCurrentChart() for most indicators — it handles session and
+// backadjustment automatically. Use AC_resolveAssets() only when you need
 // explicit control over backadjust (e.g., forceETH toggle in a strategy).
 
 // @function Simplified auto-detection using current chart's syminfo values
 // @param gxtMode When true, metals use currency-cross triads instead of standard metal correlations, and index futures use the NQ/ES/YM triad (RTY excluded)
 // @param quadMode When true, metals use futures secondary + GXT cross-pairs as tertiary/quaternary
 // @returns AC_AssetConfig with fully resolved assets, inversion flags, and detection status
-resolveCurrentChart(bool gxtMode = false, bool quadMode = false) =>
-    resolveAssets(syminfo.ticker, syminfo.tickerid, syminfo.type, syminfo.session, true, gxtMode, quadMode)
-
+AC_resolveCurrentChart(bool gxtMode = false, bool quadMode = false) =>
+    AC_resolveAssets(syminfo.ticker, syminfo.tickerid, syminfo.type, syminfo.session, true, gxtMode, quadMode)
 // - - - - - - - - -
 // V16 Explicit Correlation Interface
 // - - - - - - - - -
-// Keeps resolveAssets()/resolveCurrentChart() backward compatible while exposing
+// Keeps AC_resolveAssets()/AC_resolveCurrentChart() backward compatible while exposing
 // GXT|Classic and Dyad|Triad|Tetrad as explicit consumer-facing modes.
 
 AC_resolveAssetsByCorrelation(string ticker, string tickerId, string assetType, string sessionType, bool useBackadjust, string correlationMode, string correlationType) =>
@@ -1474,7 +1420,7 @@ AC_resolveAssetsByCorrelation(string ticker, string tickerId, string assetType, 
     string normalizedType = typeToken == "DYAD" ? "Dyad" : typeToken == "TETRAD" ? "Tetrad" : "Triad"
     bool gxtMode = normalizedMode == "GXT"
     bool tetradMode = normalizedType == "Tetrad"
-    AC_AssetConfig config = resolveAssets(ticker, tickerId, assetType, sessionType, useBackadjust, gxtMode, tetradMode)
+    AC_AssetConfig config = AC_resolveAssets(ticker, tickerId, assetType, sessionType, useBackadjust, gxtMode, tetradMode)
     if config.assetCategory == "cad_futures"
         config.invertSecondary := true
     if config.assetCategory == "forex_cfd" and AC_f_is_fx_dxy(AC_f_symbol_only(ticker))
@@ -1498,325 +1444,14 @@ AC_resolveAssetsByCorrelation(string ticker, string tickerId, string assetType, 
     config.correlationType := hasQuaternary ? "Tetrad" : hasTertiary ? "Triad" : "Dyad"
     config
 
-AC_resolveCurrentChartByCorrelation(string correlationMode, string correlationType) =>
-    AC_resolveAssetsByCorrelation(syminfo.ticker, syminfo.tickerid, syminfo.type, syminfo.session, true, correlationMode, correlationType)
+// ============================================================================
+// Library GXVUtils_v12.pine inlined as QTU_* (was: import ... as QTU): the 13 of 201 definitions Boom uses
 
 // ============================================================================
-// Library GXVUtils_v12.pine inlined as QTU_* (was: import ... as QTU)
-
-// ============================================================================
-const string QTU_DASH = "────────────────────────────────────────"
-
-QTU_bareTicker(string tickerStr) =>
-    int pos = str.pos(tickerStr, ":")
-    not na(pos) ? str.substring(tickerStr, pos + 1) : tickerStr
-
-QTU_hasSymbol(string s) =>
-    str.length(s) > 0
-
-QTU_sameSymbol(string a, string b) =>
-    QTU_hasSymbol(a) and QTU_hasSymbol(b) and QTU_bareTicker(a) == QTU_bareTicker(b)
-
-QTU_sameSymbolLoose(string a, string b) =>
-    str.upper(a) == str.upper(b) or str.upper(QTU_bareTicker(a)) == str.upper(QTU_bareTicker(b))
-
-QTU_priorityAssetLabel(string assets, string pair1, string pair2) =>
-    string out = ""
-    if str.length(assets) > 0
-        bool has1 = str.length(pair1) > 0 and str.contains("|" + assets + "|", "|" + pair1 + "|")
-        bool has2 = str.length(pair2) > 0 and str.contains("|" + assets + "|", "|" + pair2 + "|")
-        out := has1 ? pair1 : has2 ? pair2 : assets
-    str.length(out) > 0 ? QTU_bareTicker(out) : out
-
-QTU_ssmtOwnerActive(int owner, bool autoSmt, string sequence) =>
-    not autoSmt or owner == 0 or (sequence == "GXT Sequence" ? owner == 2 : owner == 1)
-
-QTU_bodyDir(float o, float c) =>
-    c > o ? 1 : c < o ? -1 : 0
-
-QTU_autoSequenceReq() =>
-    int dir = 0
-    if high[1] > high[2] and close[1] < high[2] and high <= high[1]
-        dir := -1
-    else if low[1] < low[2] and close[1] > low[2] and low >= low[1]
-        dir := 1
-    dir
-
-QTU_prevHlReq() =>
-    [high[1], low[1]]
-
-QTU_htfSmtReq() =>
-    [QTU_bodyDir(open, close), QTU_bodyDir(open[1], close[1]), high, low, high[1], low[1]]
-
-QTU_isMidPrefix(string px) =>
-    px == "CAPITALCOM" or px == "CMCMARKETS"
-
-QTU_isChicagoPrefix(string px) =>
-    px == "CME" or px == "CBOT" or px == "CBOT_MINI" or px == "CBOT_DL" or px == "CME_MINI" or px == "CME_DL" or px == "CME_MINI_DL" or px == "COMEX" or px == "NYMEX"
-
-QTU_isUtcPrefix(string px) =>
-    px == "BINANCE" or px == "BYBIT" or px == "KRAKEN" or px == "GATE.IO" or px == "BITSTAMP" or px == "COINBASE" or px == "GEMINI"
-
-QTU_oracleTz(string px) =>
-    QTU_isChicagoPrefix(px) ? "America/Chicago" : QTU_isMidPrefix(px) ? "Etc/GMT+5" : QTU_isUtcPrefix(px) ? "UTC" : "America/New_York"
-
-QTU_oracleDayStartHour(string px) =>
-    QTU_isChicagoPrefix(px) or QTU_isMidPrefix(px) ? 17 : QTU_isUtcPrefix(px) ? 22 : 18
-
-QTU_quarterSubCycleIndex(int barTime, int dayStartTime, string tz, int startHour) =>
-    int cy = year(dayStartTime, tz)
-    int cm = month(dayStartTime, tz)
-    int qsM = int(math.floor((cm - 1) / 3)) * 3 + 1
-    int qsT = timestamp(tz, cy, qsM, 1, startHour, 0)
-    int qeT = qsM == 10 ? timestamp(tz, cy + 1, 1, 1, startHour, 0) : timestamp(tz, cy, qsM + 3, 1, startHour, 0)
-    int q = int(math.floor((barTime - qsT) * 4.0 / math.max(1, qeT - qsT)))
-    math.max(0, math.min(3, q))
-
-QTU_monthOfQuarterIndex(int dayStartTime, string tz) =>
-    int cm = month(dayStartTime, tz)
-    int qsM = int(math.floor((cm - 1) / 3)) * 3 + 1
-    cm - qsM
-
-QTU_daysSinceSunday(int dow) =>
-    dow == dayofweek.sunday ? 0 : dow == dayofweek.monday ? 1 : dow == dayofweek.tuesday ? 2 : dow == dayofweek.wednesday ? 3 : dow == dayofweek.thursday ? 4 : dow == dayofweek.friday ? 5 : 6
-
-QTU_smtAnchorRangeKey(int barTime, int anchorTime, int rangeMinutes) =>
-    int rangeMs = rangeMinutes * 60 * 1000
-    anchorTime + int(math.floor((barTime - anchorTime) / rangeMs)) * rangeMs
-
-QTU_smtIsoWeekYear(int refTime, string tz) =>
-    int wy = year(refTime, tz)
-    int wm = month(refTime, tz)
-    int cw = weekofyear(refTime, tz)
-    wy := wm == 12 and cw == 1 ? wy + 1 : wm == 1 and cw >= 52 ? wy - 1 : wy
-    wy
-
-QTU_smtIsoWeekRangeKey(int dayStartTime, int oneDayMs, string tz) =>
-    int refTime = dayStartTime + oneDayMs
-    QTU_smtIsoWeekYear(refTime, tz) * 100 + weekofyear(refTime, tz)
-
-QTU_smtMonthOfQuarterRangeKey(int dayStartTime, string tz) =>
-    int cy = year(dayStartTime, tz)
-    int cm = month(dayStartTime, tz)
-    cy * 100 + (int(math.floor((cm - 1) / 3)) + 1) * 10 + QTU_monthOfQuarterIndex(dayStartTime, tz)
-
-QTU_smtQuarterSubrangeKey(int barTime, int dayStartTime, string tz, int startHour) =>
-    int cy = year(dayStartTime, tz)
-    int cm = month(dayStartTime, tz)
-    (cy * 100) + (int(math.floor((cm - 1) / 3)) + 1) * 10 + QTU_quarterSubCycleIndex(barTime, dayStartTime, tz, startHour)
-
-QTU_smtFourYearPhase(int y) =>
-    y % 4 == 3 ? 0 : y % 4 == 0 ? 1 : y % 4 == 1 ? 2 : 3
-
-QTU_smtFourYearRangeKey(int barTime, string tz) =>
-    int y = year(barTime, tz)
-    int(math.floor(y / 4)) * 10 + QTU_smtFourYearPhase(y)
-
-QTU_bodyTouches(float o, float c, float lvl) =>
-    math.min(o, c) <= lvl and math.max(o, c) >= lvl
-
-QTU_lineCrossesBody(int bx1, float y1, int bx2, float y2, int barIndex) =>
-    bool crosses = false
-    bool ok = not na(bx1) and not na(bx2) and bx1 != bx2
-    if ok
-        int left = math.min(bx1, bx2)
-        int right = math.max(bx1, bx2)
-        int safeLeft = math.max(left + 1, barIndex - 4999)
-        int safeRight = math.min(right - 1, barIndex)
-        int span = bx2 - bx1
-        if safeLeft <= safeRight
-            float slope = (y2 - y1) / span
-            for b = safeLeft to safeRight
-                int off = barIndex - b
-                float op = open[off]
-                float cl = close[off]
-                float bodyLo = op < cl ? op : cl
-                float bodyHi = op > cl ? op : cl
-                float lineY = y1 + slope * (b - bx1)
-                if lineY > bodyLo and lineY < bodyHi
-                    crosses := true
-                    break
-    crosses
-
-QTU_isBullishCandle(float c, float o, float h, float l) =>
-    c == o ? math.abs(o - h) < math.abs(o - l) : c > o
-
-QTU_biasColor(int dir, color bull, color bear, color neutral) =>
-    dir == 1 ? bull : dir == -1 ? bear : neutral
-
-QTU_biasSide(int side, bool bullOk, bool bearOk) =>
-    side == 1 ? bullOk : side == -1 ? bearOk : true
-
-QTU_biasSsmt(int dir, bool unbiasedSmt, bool filterOn, bool bullOk, bool bearOk) =>
-    unbiasedSmt and filterOn ? true : dir == -1 ? bullOk : dir == 1 ? bearOk : true
-
-QTU_biasHtfSmt(int side, bool unbiasedSmt, bool filterOn, bool bullOk, bool bearOk) =>
-    unbiasedSmt and filterOn or QTU_biasSide(side, bullOk, bearOk)
-
-QTU_biasText(int dir, bool offMode) =>
-    dir == 1 ? "BULLISH" : dir == -1 ? "BEARISH" : offMode ? "OFF" : "NEUTRAL"
-
-QTU_autoText(bool autoMode, bool autoSeq, bool autoSmt) =>
-    autoMode ? autoSeq and autoSmt ? "ON ●" : "HYBRID ●" : "OFF ●"
-
-QTU_autoStateText(bool biasAuto, bool autoSeq, bool autoSmt) =>
-    biasAuto ? autoSeq and autoSmt ? "ON" : "HYBRID" : "OFF"
-
-QTU_autoDotColor(bool biasAuto, color onClr, color offClr) =>
-    biasAuto ? onClr : offClr
-
 QTU_smtMaskHas(int mask, int bit) =>
     bit > 0 and int(math.floor(mask / bit)) % 2 == 1
-
 QTU_smtMaskAdd(int mask, int bit) =>
     QTU_smtMaskHas(mask, bit) ? mask : mask + bit
-
-QTU_smtMaskRemove(int mask, int bit) =>
-    QTU_smtMaskHas(mask, bit) ? mask - bit : mask
-
-QTU_smtRankBit(int rank) =>
-    rank == 1 ? 1 : rank == 2 ? 2 : rank == 3 ? 8 : rank == 4 ? 4 : rank == 5 ? 16 : rank == 6 ? 32 : rank == 7 ? 2048 : rank == 8 ? 4096 : rank == 9 ? 64 : rank == 10 ? 128 : rank == 11 ? 256 : rank == 12 ? 512 : rank == 13 ? 1024 : 0
-
-QTU_smtMaskMerge(int a, int b) =>
-    int out = a
-    out := QTU_smtMaskHas(b, 1) ? QTU_smtMaskAdd(out, 1) : out
-    out := QTU_smtMaskHas(b, 2) ? QTU_smtMaskAdd(out, 2) : out
-    out := QTU_smtMaskHas(b, 4) ? QTU_smtMaskAdd(out, 4) : out
-    out := QTU_smtMaskHas(b, 8) ? QTU_smtMaskAdd(out, 8) : out
-    out := QTU_smtMaskHas(b, 16) ? QTU_smtMaskAdd(out, 16) : out
-    out := QTU_smtMaskHas(b, 32) ? QTU_smtMaskAdd(out, 32) : out
-    out := QTU_smtMaskHas(b, 2048) ? QTU_smtMaskAdd(out, 2048) : out
-    out := QTU_smtMaskHas(b, 4096) ? QTU_smtMaskAdd(out, 4096) : out
-    out := QTU_smtMaskHas(b, 64) ? QTU_smtMaskAdd(out, 64) : out
-    out := QTU_smtMaskHas(b, 128) ? QTU_smtMaskAdd(out, 128) : out
-    out := QTU_smtMaskHas(b, 256) ? QTU_smtMaskAdd(out, 256) : out
-    out := QTU_smtMaskHas(b, 512) ? QTU_smtMaskAdd(out, 512) : out
-    out := QTU_smtMaskHas(b, 1024) ? QTU_smtMaskAdd(out, 1024) : out
-    out
-
-QTU_smtMaskIntersects(int a, int b) =>
-    a > 0 and b > 0 and (QTU_smtMaskHas(a, 1) and QTU_smtMaskHas(b, 1) or QTU_smtMaskHas(a, 2) and QTU_smtMaskHas(b, 2) or QTU_smtMaskHas(a, 4) and QTU_smtMaskHas(b, 4) or QTU_smtMaskHas(a, 8) and QTU_smtMaskHas(b, 8) or QTU_smtMaskHas(a, 16) and QTU_smtMaskHas(b, 16) or QTU_smtMaskHas(a, 32) and QTU_smtMaskHas(b, 32) or QTU_smtMaskHas(a, 2048) and QTU_smtMaskHas(b, 2048) or QTU_smtMaskHas(a, 4096) and QTU_smtMaskHas(b, 4096) or QTU_smtMaskHas(a, 64) and QTU_smtMaskHas(b, 64) or QTU_smtMaskHas(a, 128) and QTU_smtMaskHas(b, 128) or QTU_smtMaskHas(a, 256) and QTU_smtMaskHas(b, 256) or QTU_smtMaskHas(a, 512) and QTU_smtMaskHas(b, 512) or QTU_smtMaskHas(a, 1024) and QTU_smtMaskHas(b, 1024))
-
-QTU_smtMaskFilter(int mask, int allowed) =>
-    int out = 0
-    out := QTU_smtMaskHas(mask, 1) and QTU_smtMaskHas(allowed, 1) ? QTU_smtMaskAdd(out, 1) : out
-    out := QTU_smtMaskHas(mask, 2) and QTU_smtMaskHas(allowed, 2) ? QTU_smtMaskAdd(out, 2) : out
-    out := QTU_smtMaskHas(mask, 4) and QTU_smtMaskHas(allowed, 4) ? QTU_smtMaskAdd(out, 4) : out
-    out := QTU_smtMaskHas(mask, 8) and QTU_smtMaskHas(allowed, 8) ? QTU_smtMaskAdd(out, 8) : out
-    out := QTU_smtMaskHas(mask, 16) and QTU_smtMaskHas(allowed, 16) ? QTU_smtMaskAdd(out, 16) : out
-    out := QTU_smtMaskHas(mask, 32) and QTU_smtMaskHas(allowed, 32) ? QTU_smtMaskAdd(out, 32) : out
-    out := QTU_smtMaskHas(mask, 2048) and QTU_smtMaskHas(allowed, 2048) ? QTU_smtMaskAdd(out, 2048) : out
-    out := QTU_smtMaskHas(mask, 4096) and QTU_smtMaskHas(allowed, 4096) ? QTU_smtMaskAdd(out, 4096) : out
-    out := QTU_smtMaskHas(mask, 64) and QTU_smtMaskHas(allowed, 64) ? QTU_smtMaskAdd(out, 64) : out
-    out := QTU_smtMaskHas(mask, 128) and QTU_smtMaskHas(allowed, 128) ? QTU_smtMaskAdd(out, 128) : out
-    out := QTU_smtMaskHas(mask, 256) and QTU_smtMaskHas(allowed, 256) ? QTU_smtMaskAdd(out, 256) : out
-    out := QTU_smtMaskHas(mask, 512) and QTU_smtMaskHas(allowed, 512) ? QTU_smtMaskAdd(out, 512) : out
-    out := QTU_smtMaskHas(mask, 1024) and QTU_smtMaskHas(allowed, 1024) ? QTU_smtMaskAdd(out, 1024) : out
-    out
-
-QTU_smtMaskRank(int mask) =>
-    QTU_smtMaskHas(mask, 1024) ? 13 : QTU_smtMaskHas(mask, 512) ? 12 : QTU_smtMaskHas(mask, 256) ? 11 : QTU_smtMaskHas(mask, 128) ? 10 : QTU_smtMaskHas(mask, 64) ? 9 : QTU_smtMaskHas(mask, 4096) ? 8 : QTU_smtMaskHas(mask, 2048) ? 7 : QTU_smtMaskHas(mask, 32) ? 6 : QTU_smtMaskHas(mask, 16) ? 5 : QTU_smtMaskHas(mask, 4) ? 4 : QTU_smtMaskHas(mask, 8) ? 3 : QTU_smtMaskHas(mask, 2) ? 2 : QTU_smtMaskHas(mask, 1) ? 1 : 0
-
-QTU_smtMaskHighestBit(int mask) =>
-    QTU_smtMaskHas(mask, 1024) ? 1024 : QTU_smtMaskHas(mask, 512) ? 512 : QTU_smtMaskHas(mask, 256) ? 256 : QTU_smtMaskHas(mask, 128) ? 128 : QTU_smtMaskHas(mask, 64) ? 64 : QTU_smtMaskHas(mask, 4096) ? 4096 : QTU_smtMaskHas(mask, 2048) ? 2048 : QTU_smtMaskHas(mask, 32) ? 32 : QTU_smtMaskHas(mask, 16) ? 16 : QTU_smtMaskHas(mask, 4) ? 4 : QTU_smtMaskHas(mask, 8) ? 8 : QTU_smtMaskHas(mask, 2) ? 2 : QTU_smtMaskHas(mask, 1) ? 1 : 0
-
-QTU_smtMaskAddDisplay(string out, int mask, int bit, string displayText) =>
-    QTU_smtMaskHas(mask, bit) ? (str.length(out) == 0 ? displayText : out + " + " + displayText) : out
-
-QTU_smtMaskTokensToDisplay(int mask) =>
-    string out = ""
-    if mask > 0
-        out := QTU_smtMaskAddDisplay(out, mask, 1024, "12M")
-        out := QTU_smtMaskAddDisplay(out, mask, 512, "3M")
-        out := QTU_smtMaskAddDisplay(out, mask, 256, "1M")
-        out := QTU_smtMaskAddDisplay(out, mask, 128, "1W")
-        out := QTU_smtMaskAddDisplay(out, mask, 64, "1D")
-        out := QTU_smtMaskAddDisplay(out, mask, 4096, "12H")
-        out := QTU_smtMaskAddDisplay(out, mask, 2048, "7H")
-        out := QTU_smtMaskAddDisplay(out, mask, 32, "6H")
-        out := QTU_smtMaskAddDisplay(out, mask, 16, "4H")
-        out := QTU_smtMaskAddDisplay(out, mask, 8, "1H")
-        out := QTU_smtMaskAddDisplay(out, mask, 4, "90m")
-        out := QTU_smtMaskAddDisplay(out, mask, 2, "30m")
-        out := QTU_smtMaskAddDisplay(out, mask, 1, "15m")
-    out
-
-QTU_smtRankName(int rank) =>
-    rank == 1 ? "15m" : rank == 2 ? "30m" : rank == 3 ? "1H" : rank == 4 ? "90m" : rank == 5 ? "4H" : rank == 6 ? "6H" : rank == 7 ? "7H" : rank == 8 ? "12H" : rank == 9 ? "1D" : rank == 10 ? "1W" : rank == 11 ? "1M" : rank == 12 ? "3M" : rank == 13 ? "12M" : ""
-
-QTU_smtPairNameForSlot(int pairSlot, string pair1, string pair2) =>
-    pairSlot == 1 ? pair1 : pairSlot == 2 ? pair2 : ""
-
-QTU_smtLabelText(string style, string shortname, string pairName) =>
-    style == "Asset Only" ? "SMT " + pairName : style == "TF Only" ? shortname + " SMT" : shortname + " SMT " + pairName
-
-QTU_smtDefaultLabelText(int rank, int pairSlot, string pair1, string pair2, string style) =>
-    QTU_smtLabelText(style, QTU_smtRankName(rank), QTU_smtPairNameForSlot(pairSlot, pair1, pair2))
-
-QTU_smtBypassLabelText(int rank, int pairSlot, string pair1, string pair2, string style) =>
-    style == "Asset Only" ? QTU_smtPairNameForSlot(pairSlot, pair1, pair2) : QTU_smtRankName(rank)
-
-QTU_smtLabelGateSeconds(int rank, int sec5, int sec15, int sec60, int sec240, int sec360, int secD, int secM) =>
-    rank <= 2 ? sec5 : rank <= 4 ? sec15 : rank <= 7 ? sec60 : rank <= 9 ? sec240 : rank <= 11 ? sec360 : rank == 12 ? secD : secM
-
-QTU_smtMaskLabelCycles(int mask, bool hideLtf) =>
-    hideLtf ? QTU_smtMaskFilter(mask, 8188) : mask
-
-QTU_smtMaskEventLabel(int mask, string assets, string pair1, string pair2) =>
-    string cy = QTU_smtMaskTokensToDisplay(mask)
-    string assetTxt = QTU_priorityAssetLabel(assets, pair1, pair2)
-    str.length(assetTxt) > 0 ? cy + " " + assetTxt : cy
-
-QTU_smtMaskSssmtLabel(int mask, string assets, string pair1, string pair2) =>
-    string base = QTU_smtMaskEventLabel(mask, assets, pair1, pair2)
-    str.length(base) > 0 ? "SS " + base : "SS"
-
-QTU_smtRenderEligible(int cycles, int displayMask, int pivotX, bool currentDayOnly, int dayStart, bool ownerOk) =>
-    bool pivotOk = not currentDayOnly or (not na(pivotX) and pivotX >= dayStart)
-    ownerOk and pivotOk and QTU_smtMaskIntersects(cycles, displayMask)
-
-QTU_smtRenderPrep(int cycles, int displayMask, int pivotBX, bool currentDayOnly, int dayStart, bool hideLtf, bool hideCleanup, bool useSS, string assets, string pair1, string pair2, bool ownerOk) =>
-    bool pivotOk = not currentDayOnly or (not na(pivotBX) and pivotBX >= dayStart)
-    int displayCycles = pivotOk ? QTU_smtMaskFilter(cycles, displayMask) : 0
-    int labelCycles = useSS ? displayCycles : QTU_smtMaskLabelCycles(displayCycles, hideLtf)
-    labelCycles := hideCleanup ? QTU_smtMaskHighestBit(labelCycles) : labelCycles
-    string txt = useSS ? QTU_smtMaskSssmtLabel(labelCycles, assets, pair1, pair2) : QTU_smtMaskEventLabel(labelCycles, assets, pair1, pair2)
-    [displayCycles, txt, ownerOk and displayCycles != 0, labelCycles == 0]
-
-QTU_smtRenderColors(bool hideLines, bool hideLabels, bool biasOk, bool cycleOk, bool hideCycleLabel, color baseLine, color baseText) =>
-    [hideLines or not biasOk or not cycleOk ? #FFFFFF00 : baseLine, hideLabels or hideCycleLabel or not biasOk or not cycleOk ? #FFFFFF00 : baseText]
-
-QTU_smtDisplayMaskForChart(int mask, int chartSec) =>
-    int out = mask
-    if chartSec >= 300
-        out := QTU_smtMaskRemove(QTU_smtMaskRemove(out, 1), 2)
-    if chartSec >= 900
-        out := QTU_smtMaskRemove(QTU_smtMaskRemove(out, 8), 4)
-    if chartSec >= 3600
-        out := QTU_smtMaskRemove(QTU_smtMaskRemove(out, 16), 32)
-    out
-
-QTU_smtEnabledMask(bool autoMode, string sequence, bool s15, bool s30, bool s90, bool s1h, bool s4h, bool s6h, bool s1d, bool s1w, bool s1m, bool s3m, bool s12m) =>
-    int out = 0
-    if autoMode
-        bool gxt = sequence == "GXT Sequence"
-        out := QTU_smtMaskAdd(out, gxt ? 2 : 1)
-        out := QTU_smtMaskAdd(out, gxt ? 4 : 8)
-        out := QTU_smtMaskAdd(out, gxt ? 32 : 16)
-    else
-        out := s15 ? QTU_smtMaskAdd(out, 1) : out
-        out := s30 ? QTU_smtMaskAdd(out, 2) : out
-        out := s90 ? QTU_smtMaskAdd(out, 4) : out
-        out := s1h ? QTU_smtMaskAdd(out, 8) : out
-        out := s4h ? QTU_smtMaskAdd(out, 16) : out
-        out := s6h ? QTU_smtMaskAdd(out, 32) : out
-    out := s1d ? QTU_smtMaskAdd(out, 64) : out
-    out := s1w ? QTU_smtMaskAdd(out, 128) : out
-    out := s1m ? QTU_smtMaskAdd(out, 256) : out
-    out := s3m ? QTU_smtMaskAdd(out, 512) : out
-    out := s12m ? QTU_smtMaskAdd(out, 1024) : out
-    out
-
 QTU_smtEnabledMaskFull(bool autoMode, string sequence, bool s15, bool s30, bool s90, bool s1h, bool s4h, bool s6h, bool s7h, bool s12h, bool s1d, bool s1w, bool s1m, bool s3m, bool s12m) =>
     int out = 0
     if autoMode
@@ -1840,573 +1475,20 @@ QTU_smtEnabledMaskFull(bool autoMode, string sequence, bool s15, bool s30, bool 
     out := s3m ? QTU_smtMaskAdd(out, 512) : out
     out := s12m ? QTU_smtMaskAdd(out, 1024) : out
     out
-
-QTU_ssmtOwnerFromMask(int bit) =>
-    bit == 1 or bit == 8 or bit == 16 or bit == 2048 ? 1 : bit == 2 or bit == 4 or bit == 32 or bit == 4096 ? 2 : 0
-
-QTU_ssmtOwnerMaskEnabled(int cycles, int owner, bool autoSmt, string sequence, int allowedMask, bool ssShow) =>
-    ssShow and QTU_ssmtOwnerActive(owner, autoSmt, sequence) and QTU_smtMaskIntersects(cycles, allowedMask)
-
-QTU_smtMaskResetOnMarketGap(int bit) =>
-    bit == 1 or bit == 2 or bit == 4 or bit == 8 or bit == 16 or bit == 32 or bit == 2048 or bit == 4096
-
-
-QTU_cycleRankFromToken(string token) =>
-    token == "12M" ? 13 : token == "3M" ? 12 : token == "1M" ? 11 : token == "1W" ? 10 : token == "1D" ? 9 : token == "12H" ? 8 : token == "7H" ? 7 : token == "6H" ? 6 : token == "4H" ? 5 : token == "90m" ? 4 : token == "1H" ? 3 : token == "30m" ? 2 : token == "15m" ? 1 : 0
-
-QTU_pipeHasToken(string list, string token) =>
-    str.length(list) > 0 and str.length(token) > 0 and str.contains("|" + list + "|", "|" + token + "|")
-
-QTU_cycleRankFromTokens(string tokens) =>
-    QTU_pipeHasToken(tokens, "12M") ? 13 : QTU_pipeHasToken(tokens, "3M") ? 12 : QTU_pipeHasToken(tokens, "1M") ? 11 : QTU_pipeHasToken(tokens, "1W") ? 10 : QTU_pipeHasToken(tokens, "1D") ? 9 : QTU_pipeHasToken(tokens, "12H") ? 8 : QTU_pipeHasToken(tokens, "7H") ? 7 : QTU_pipeHasToken(tokens, "6H") ? 6 : QTU_pipeHasToken(tokens, "4H") ? 5 : QTU_pipeHasToken(tokens, "90m") ? 4 : QTU_pipeHasToken(tokens, "1H") ? 3 : QTU_pipeHasToken(tokens, "30m") ? 2 : QTU_pipeHasToken(tokens, "15m") ? 1 : 0
-
-QTU_highestCycleToken(string tokens) =>
-    QTU_pipeHasToken(tokens, "12M") ? "12M" : QTU_pipeHasToken(tokens, "3M") ? "3M" : QTU_pipeHasToken(tokens, "1M") ? "1M" : QTU_pipeHasToken(tokens, "1W") ? "1W" : QTU_pipeHasToken(tokens, "1D") ? "1D" : QTU_pipeHasToken(tokens, "12H") ? "12H" : QTU_pipeHasToken(tokens, "7H") ? "7H" : QTU_pipeHasToken(tokens, "6H") ? "6H" : QTU_pipeHasToken(tokens, "4H") ? "4H" : QTU_pipeHasToken(tokens, "90m") ? "90m" : QTU_pipeHasToken(tokens, "1H") ? "1H" : QTU_pipeHasToken(tokens, "30m") ? "30m" : QTU_pipeHasToken(tokens, "15m") ? "15m" : tokens
-
-QTU_eventPriceTol(float y1, float y2, float mult, float mintick) =>
-    math.max(mintick * 4.0 * mult, math.abs((y1 + y2) * 0.5) * 0.00002 * mult)
-
-QTU_rawMoveSign(float prev, float curr) =>
-    curr > prev ? 1 : curr < prev ? -1 : 0
-
-QTU_ssmtDirectDiverges(float mainA, float mainB, float pairA, float pairB, bool inv, bool bear) =>
-    bear ? inv ? (((mainA >= mainB and pairA >= pairB) or (mainA <= mainB and pairA <= pairB)) and not (mainA == mainB and pairA == pairB)) : (((mainA >= mainB and pairA <= pairB) or (mainA <= mainB and pairA >= pairB)) and not (mainA == mainB and pairA == pairB)) : inv ? (((mainA <= mainB and pairA <= pairB) or (mainA >= mainB and pairA >= pairB)) and not (mainA == mainB and pairA == pairB)) : (((mainA <= mainB and pairA >= pairB) or (mainA >= mainB and pairA <= pairB)) and not (mainA == mainB and pairA == pairB))
-
-QTU_eventStrength(int x1, float y1, int x2, float y2, int chartTfMs, float mintick) =>
-    math.max(1.0, math.abs(x2 - x1) / (chartTfMs * 1.0)) * 1000.0 + math.max(1.0, math.abs(y2 - y1) / mintick)
-
-QTU_addToken(string list, string token) =>
-    string out = list
-    if str.length(token) > 0
-        if str.length(out) == 0
-            out := token
-        else if not QTU_pipeHasToken(out, token)
-            out += "|" + token
-    out
-
-QTU_removeToken(string list, string token) =>
-    string s = str.replace_all("|" + list + "|", "|" + token + "|", "|")
-    int n = str.length(s)
-    n > 2 ? str.substring(s, 1, n - 1) : ""
-
-QTU_mergeCycleTokens(string base, string tokens) =>
-    string out = base
-    if str.length(tokens) > 0
-        out := QTU_pipeHasToken(tokens, "12M") ? QTU_addToken(out, "12M") : out
-        out := QTU_pipeHasToken(tokens, "3M") ? QTU_addToken(out, "3M") : out
-        out := QTU_pipeHasToken(tokens, "1M") ? QTU_addToken(out, "1M") : out
-        out := QTU_pipeHasToken(tokens, "1W") ? QTU_addToken(out, "1W") : out
-        out := QTU_pipeHasToken(tokens, "1D") ? QTU_addToken(out, "1D") : out
-        out := QTU_pipeHasToken(tokens, "6H") ? QTU_addToken(out, "6H") : out
-        out := QTU_pipeHasToken(tokens, "4H") ? QTU_addToken(out, "4H") : out
-        out := QTU_pipeHasToken(tokens, "1H") ? QTU_addToken(out, "1H") : out
-        out := QTU_pipeHasToken(tokens, "90m") ? QTU_addToken(out, "90m") : out
-        out := QTU_pipeHasToken(tokens, "30m") ? QTU_addToken(out, "30m") : out
-        out := QTU_pipeHasToken(tokens, "15m") ? QTU_addToken(out, "15m") : out
-    out
-
-QTU_mergeAssetTokens(string base, string tokens, string pair1, string pair2) =>
-    string out = base
-    if str.length(tokens) > 0
-        bool added = false
-        if str.length(pair1) > 0 and QTU_pipeHasToken(tokens, pair1)
-            out := QTU_addToken(out, pair1)
-            added := true
-        if str.length(pair2) > 0 and QTU_pipeHasToken(tokens, pair2)
-            out := QTU_addToken(out, pair2)
-            added := true
-        if not added
-            out := QTU_addToken(out, tokens)
-    out
-
-QTU_addDisplay(string out, string list, string token, string displayText) =>
-    QTU_pipeHasToken(list, token) ? (str.length(out) == 0 ? displayText : out + " + " + displayText) : out
-
-QTU_tokensToDisplay(string list) =>
-    string out = ""
-    if str.length(list) > 0
-        out := QTU_addDisplay(out, list, "12M", "12M")
-        out := QTU_addDisplay(out, list, "3M", "3M")
-        out := QTU_addDisplay(out, list, "1M", "1M")
-        out := QTU_addDisplay(out, list, "1W", "1W")
-        out := QTU_addDisplay(out, list, "1D", "1D")
-        out := QTU_addDisplay(out, list, "6H", "6H")
-        out := QTU_addDisplay(out, list, "4H", "4H")
-        out := QTU_addDisplay(out, list, "1H", "1H")
-        out := QTU_addDisplay(out, list, "90m", "90m")
-        out := QTU_addDisplay(out, list, "30m", "30m")
-        out := QTU_addDisplay(out, list, "15m", "15m")
-    out
-
-QTU_smtLabelCycles(string cycles, bool hideLtf) =>
-    string out = cycles
-    if hideLtf
-        out := ""
-        out := QTU_pipeHasToken(cycles, "12M") ? QTU_addToken(out, "12M") : out
-        out := QTU_pipeHasToken(cycles, "3M") ? QTU_addToken(out, "3M") : out
-        out := QTU_pipeHasToken(cycles, "1M") ? QTU_addToken(out, "1M") : out
-        out := QTU_pipeHasToken(cycles, "1W") ? QTU_addToken(out, "1W") : out
-        out := QTU_pipeHasToken(cycles, "1D") ? QTU_addToken(out, "1D") : out
-        out := QTU_pipeHasToken(cycles, "6H") ? QTU_addToken(out, "6H") : out
-        out := QTU_pipeHasToken(cycles, "4H") ? QTU_addToken(out, "4H") : out
-        out := QTU_pipeHasToken(cycles, "1H") ? QTU_addToken(out, "1H") : out
-        out := QTU_pipeHasToken(cycles, "90m") ? QTU_addToken(out, "90m") : out
-    out
-
-QTU_ltfSmtLabelHidden(string cycles, bool hideLtf) =>
-    hideLtf and str.length(QTU_smtLabelCycles(cycles, true)) == 0
-
-QTU_eventLabel(string cycles, string assets, string pair1, string pair2) =>
-    string cy = QTU_tokensToDisplay(cycles)
-    string assetTxt = QTU_priorityAssetLabel(assets, pair1, pair2)
-    str.length(assetTxt) > 0 ? cy + " " + assetTxt : cy
-
-QTU_sssmtLabel(string cycles, string assets, string pair1, string pair2) =>
-    string base = QTU_eventLabel(cycles, assets, pair1, pair2)
-    str.length(base) > 0 ? "SS " + base : "SS"
-
-QTU_assetChain(string current, bool ok1, string sym1, bool ok2, string sym2) =>
-    string tail = ok1 ? QTU_bareTicker(sym1) : ""
-    tail := ok2 ? (str.length(tail) > 0 ? tail + " - " : "") + QTU_bareTicker(sym2) : tail
-    str.length(tail) > 0 ? current + " - " + tail : current
-
-QTU_eventMidY(float y1, float y2) =>
-    math.round_to_mintick((y1 + y2) * 0.5)
-
-QTU_newOwnerBetter(float newStrength, int newRank, float oldStrength, int oldRank) =>
-    newStrength > oldStrength or (math.abs(newStrength - oldStrength) <= 0.0001 and newRank > oldRank)
-
-QTU_ssmtCase(int dir, float prev, float curr) =>
-    dir == 1 ? curr > prev ? 1 : curr < prev ? -1 : 0 : curr < prev ? 1 : curr > prev ? -1 : 0
-
-QTU_pairSsmtCase(int side, int move) =>
-    side == 1 ? move : side == -1 ? -move : 0
-
-QTU_moreExtremeA(int dir, float newY, float oldY, float tol) =>
-    dir == 1 ? newY > oldY + tol : newY < oldY - tol
-
-QTU_moreExtremeB(int dir, float newY, float oldY, float tol) =>
-    dir == 1 ? newY > oldY + tol : newY < oldY - tol
-
-QTU_barSpan(int x1, int x2) =>
-    math.abs(x2 - x1)
-
-QTU_pivotMatch(int barA, float priceA, int barB, float priceB, float mintick) =>
-    not na(barA) and not na(barB) and not na(priceA) and not na(priceB) and barA == barB and math.abs(priceA - priceB) <= mintick * 0.5
-
-QTU_absorbWindowFlags(int kb1, int kb2, int ob1, int ob2, int kx1, int kx2, int ox1, int ox2, float ky1, float ky2, float oy1, float oy2, int chartTfMs, float mintick) =>
-    int nl = math.min(kb1, kb2)
-    int nr = math.max(kb1, kb2)
-    int ol = math.min(ob1, ob2)
-    int orr = math.max(ob1, ob2)
-    bool validArgs = chartTfMs > 0 and mintick > 0 and not na(kx1) and not na(kx2) and not na(ox1) and not na(ox2) and not na(ky1) and not na(ky2) and not na(oy1) and not na(oy2)
-    bool sameA = not na(ob1) and not na(kb1) and ob1 == kb1
-    bool sameB = not na(ob2) and not na(kb2) and ob2 == kb2
-    bool strictlyInside = validArgs and not na(nl) and not na(nr) and not na(ol) and not na(orr) and ol > nl and orr < nr
-    bool neighborHandoff = validArgs and (not na(ob2) and not na(kb1) and ob2 == kb1 or not na(ob1) and not na(kb2) and ob1 == kb2)
-    [sameA, sameB, strictlyInside, neighborHandoff]
-
 QTU_lineStyle(string styleText) =>
     styleText == "----" or str.contains(styleText, "Dash") ? line.style_dashed : styleText == "...." or str.contains(styleText, "Dot") ? line.style_dotted : line.style_solid
-
-QTU_newIdxLine(int x1, float y1, int x2, float y2, color clr, string st) =>
-    line.new(x1 = x1, y1 = y1, x2 = x2, y2 = y2, xloc = xloc.bar_index, color = clr, style = st, width = 1)
-
-QTU_newIdxBox(int l, float t, int r, float b, color bc, color bg) =>
-    box.new(left = l, top = t, right = r, bottom = b, xloc = xloc.bar_index, border_color = bc, border_width = 1, bgcolor = bg)
-
-QTU_newPrevEqLabel(int x, float y, string txt, color txtClr, string fontFam) =>
-    label.new(x = x, y = y, text = txt, xloc = xloc.bar_index, yloc = yloc.price, color = #FFFFFF00, style = label.style_none, textcolor = txtClr, size = size.tiny, textalign = text.align_center, text_font_family = fontFam)
-
-QTU_newBoldLabel(int x, float y, string txt, string st, color txtClr, string sz, string fontFam) =>
-    label.new(x = x, y = y, text = txt, color = #FFFFFF00, style = st, textcolor = txtClr, size = sz, text_font_family = fontFam, text_formatting = text.format_bold)
-
-QTU_newTinyIdxLabel(int x, float y, string txt, string st, color txtClr, string fontFam) =>
-    label.new(x = x, y = y, text = txt, xloc = xloc.bar_index, color = #FFFFFF00, style = st, textcolor = txtClr, size = size.tiny, text_font_family = fontFam)
-
-QTU_newC123Label(int x, float y, string txt, bool bullSeq, color txtClr, string fontFam) =>
-    label.new(x = x, y = y, text = txt, color = #FFFFFF00, style = bullSeq ? label.style_label_up : label.style_label_down, textcolor = txtClr, size = size.tiny, text_font_family = fontFam, text_formatting = text.format_bold)
-
-QTU_pairEffectiveSide(int side, bool inverted) =>
-    inverted ? -side : side
-
-QTU_htfPairHigh(float pairHigh, float pairLow, bool inverted) =>
-    inverted ? -pairLow : pairHigh
-
-QTU_htfPairLow(float pairHigh, float pairLow, bool inverted) =>
-    inverted ? -pairHigh : pairLow
-
-QTU_corrDir(int d, bool inv, bool ok) =>
-    int out = ok and not na(d) ? d : 0
-    inv ? -out : out
-
-QTU_pspDir(int mainDir, int pairDir) =>
-    mainDir != 0 and pairDir == -mainDir ? mainDir : 0
-
-QTU_actualTf(string displayTf) =>
-    int n = str.length(displayTf)
-    string u = n > 0 ? str.substring(displayTf, n - 1, n) : ""
-    string v = n > 1 ? str.substring(displayTf, 0, n - 1) : ""
-    u == "m" ? v : u == "h" ? str.tostring(int(str.tonumber(v) * 60)) : displayTf
-
 QTU_htfSeconds(string tf) =>
     float n = str.tonumber(tf)
     not na(n) ? int(n * 60) : tf == "D" ? 86400 : tf == "3D" ? 259200 : tf == "W" ? 604800 : tf == "M" ? 2592000 : tf == "3M" ? 7776000 : tf == "6M" ? 15552000 : tf == "12M" ? 31104000 : na
-
 QTU_htfRuntimeBars(string tf, int count, int chartSec, int maxBars) =>
     int sec = QTU_htfSeconds(tf)
     int ratio = na(sec) or na(chartSec) or chartSec <= 0 ? maxBars : int(math.ceil(sec / chartSec))
     math.min(maxBars, math.max(250, ratio * (count + 3) + 100))
-
 QTU_runtimeOn(int barsBack, int maxCalcBars, int barIndex, int lastBarIndex) =>
     int bars = math.min(math.max(0, barsBack), maxCalcBars)
     barIndex >= math.max(0, lastBarIndex - bars)
-
-QTU_autoSeqOk(string tf, bool needed, int chartSec, int htfMaxBars, int maxCalcBars, int barIndex, int lastBarIndex) =>
-    int sec = QTU_htfSeconds(tf)
-    needed and str.length(tf) > 0 and not na(sec) and chartSec < sec and QTU_runtimeOn(QTU_htfRuntimeBars(tf, 1, chartSec, htfMaxBars), maxCalcBars, barIndex, lastBarIndex)
-
 QTU_htfRuntimeOn(string tf, int count, int chartSec, int htfMaxBars, int maxCalcBars, int barIndex, int lastBarIndex) =>
     barIndex >= math.max(0, lastBarIndex - math.max(maxCalcBars, QTU_htfRuntimeBars(tf, count, chartSec, htfMaxBars)))
-
-QTU_htfCandleShift(int candleIndex, int offset, int buffer, int width, int candlesAmount) =>
-    offset + (width + buffer) * (candlesAmount - candleIndex - 1)
-
-QTU_htfCandleWidth(int selector) =>
-    selector <= 1 ? 2 : selector == 2 ? 4 : selector == 3 ? 6 : 8
-
-QTU_htfWickX(int left, int width) =>
-    left + int(width / 2)
-
-QTU_eventLabelTime(int x1, int x2, int b1, int b2, int barIndex) =>
-    int labelBar = int(math.floor((b1 + b2) * 0.5))
-    int labelOffset = barIndex - labelBar
-    bool canUseMidBarTime = not na(labelBar) and labelOffset >= 0 and labelOffset <= 5000
-    canUseMidBarTime ? time[labelOffset] : int(math.round(x1 + (x2 - x1) * 0.5))
-
-QTU_htfLevelsIncludePane(string mode, int pane) =>
-    str.contains(mode, "12H") or str.contains(mode, "1D") or str.contains(mode, "1W") ? false : mode == "None" ? false : mode == "TF3" ? pane == 3 : mode == "TF3+TF2" ? (pane == 3 or pane == 2) : true
-
-QTU_prevSourceHas(string mode, string source) =>
-    mode == source or str.contains(mode, source)
-
-QTU_prevSourceMask(string mode) =>
-    (QTU_prevSourceHas(mode, "12H") ? 1 : 0) + (QTU_prevSourceHas(mode, "1D") ? 2 : 0) + (QTU_prevSourceHas(mode, "1W") ? 4 : 0)
-
-QTU_maskHas(int mask, int bit) =>
-    mask % (bit * 2) >= bit
-
-QTU_prevEqStartX(int openIdx, int closeIdx, float mid, int barIndex) =>
-    int midX = openIdx
-    int start = math.min(5000, math.max(0, barIndex - openIdx))
-    int stop = math.min(5000, math.max(0, barIndex - closeIdx))
-    if start >= stop
-        for off = stop to start
-            if QTU_bodyTouches(open[off], close[off], mid)
-                midX := barIndex - off
-                break
-    midX
-
-QTU_prevSourceAnchorIdx(string labelTf, int barIndex, int chartSec) =>
-    int srcSec = labelTf == "12H" ? 43200 : labelTf == "1D" ? 86400 : 604800
-    int bars = chartSec > 0 ? math.max(1, int(math.ceil(srcSec / chartSec))) : 1
-    math.max(0, barIndex - bars)
-
-QTU_prevEqText(string tf) =>
-    tf + " - EQ"
-
-QTU_cisdRecentMinBar(int barIndex, int recentWindow) =>
-    math.max(0, barIndex - recentWindow)
-
-QTU_cisdAbsBarToOff(int absBar, int cap, int barIndex, int recentWindow) =>
-    int tmp = not na(absBar) ? barIndex - absBar : na
-    not na(tmp) and tmp >= 0 and tmp <= cap and absBar >= QTU_cisdRecentMinBar(barIndex, recentWindow) ? tmp : na
-
-QTU_cisdConfirmedIdx(int idx, bool confirmed) =>
-    idx > 0 or confirmed
-
-QTU_cisdC2Invalidates(int dir, float ext, float lo, float hi) =>
-    dir == 1 ? lo < ext : dir == -1 ? hi > ext : false
-
-QTU_cisdDispLevel(int dir, int confBar, int cap, int barIndex, int recentWindow) =>
-    int off = QTU_cisdAbsBarToOff(confBar, cap, barIndex, recentWindow)
-    not na(off) ? (dir == 1 ? high[off] : low[off]) : na
-
-QTU_cisdDispSeen(int dir, int confBar, float lvl, int cap, int barIndex, int recentWindow, bool confirmed, int scanBars) =>
-    bool seen = false
-    if not na(confBar) and not na(lvl)
-        int right = math.min(barIndex, confBar + scanBars)
-        if confBar + 1 <= right
-            for absBar = confBar + 1 to right
-                int off = QTU_cisdAbsBarToOff(absBar, cap, barIndex, recentWindow)
-                if not na(off) and QTU_cisdConfirmedIdx(off, confirmed)
-                    seen := dir == 1 ? close[off] > lvl : close[off] < lvl
-                    if seen
-                        break
-    seen
-
-QTU_cisdInvalidLive(int confT, int t) =>
-    not na(confT) and not na(t) and t > confT
-
-QTU_cisdPriceMatch(float a, float b, float mintick) =>
-    not na(a) and not na(b) and math.abs(a - b) <= mintick * 0.5
-
-QTU_cisdBodyInvAccum(float cur, int dir, float o, float c) =>
-    float v = dir == -1 ? math.max(o, c) : dir == 1 ? math.min(o, c) : na
-    na(cur) ? v : dir == -1 ? math.max(cur, v) : dir == 1 ? math.min(cur, v) : cur
-
-QTU_cisdNextStopTime(int stopT, int anchorT, float lvl, int nowT, int prevT, float o, float c, bool confirmed) =>
-    int out = stopT
-    if not na(anchorT) and not na(stopT) and not na(lvl) and confirmed
-        bool firstAfterAnchor = not na(prevT) and prevT <= anchorT and nowT > anchorT
-        bool touchNow = nowT > anchorT and not firstAfterAnchor and QTU_bodyTouches(o, c, lvl)
-        if stopT >= nowT and touchNow and stopT != nowT
-            out := nowT
-    out
-
-QTU_cisdFindStopTime(int anchorT, float lvl, int barMs, int touchSearchBars, int extendBars, int lookbackCap, int nowT, bool confirmed) =>
-    int stopT = na
-    int searchCapT = anchorT + barMs * touchSearchBars
-    int fallbackT = extendBars > 0 ? anchorT + barMs * extendBars : searchCapT
-    int estBarsSinceAnchor = barMs > 0 ? int(math.ceil(float(math.max(0, nowT - anchorT)) / barMs)) + 2 : lookbackCap
-    int maxLook = math.min(lookbackCap, math.max(0, estBarsSinceAnchor))
-    bool seenAfterAnchor = false
-    for i = maxLook to 0
-        if not na(time[i])
-            int t = int(time[i])
-            if t > searchCapT
-                break
-            if t > anchorT
-                bool firstAfterAnchor = not seenAfterAnchor
-                seenAfterAnchor := true
-                if QTU_cisdConfirmedIdx(i, confirmed) and QTU_bodyTouches(open[i], close[i], lvl)
-                    if not firstAfterAnchor
-                        stopT := t
-                        break
-    na(stopT) ? fallbackT : stopT
-
-QTU_cisdPostConfirmInvalid(int dir, float inv, float ext, int confBar, int offsetCap, int barIndex, int recentWindow, bool confirmed) =>
-    bool bad = false
-    int start = not na(confBar) ? QTU_cisdAbsBarToOff(math.max(QTU_cisdRecentMinBar(barIndex, recentWindow), confBar + 1), offsetCap, barIndex, recentWindow) : na
-    if not na(start)
-        for k = 0 to start
-            int off = start - k
-            if QTU_cisdConfirmedIdx(off, confirmed)
-                bad := (not na(inv) and (dir == 1 ? close[off] < inv : dir == -1 ? close[off] > inv : false)) or (not na(ext) and QTU_cisdC2Invalidates(dir, ext, low[off], high[off]))
-                if bad
-                    break
-    bad
-
-QTU_cisdFindLockedC2(int leftBar, int rightBar, int dir, float extreme, int offsetCap, int barIndex, int recentWindow, bool confirmed, float mintick) =>
-    int outBar = na
-    int outTime = na
-    float outExt = na
-    if not na(leftBar) and not na(rightBar) and not na(extreme)
-        int left = math.max(QTU_cisdRecentMinBar(barIndex, recentWindow), math.min(leftBar, rightBar))
-        int right = math.min(barIndex, math.max(leftBar, rightBar))
-        if left <= right
-            for absBar = left to right
-                int off = QTU_cisdAbsBarToOff(absBar, offsetCap, barIndex, recentWindow)
-                if not na(off) and QTU_cisdConfirmedIdx(off, confirmed)
-                    float c2Px = dir == 1 ? low[off] : high[off]
-                    if QTU_cisdPriceMatch(c2Px, extreme, mintick) and absBar > nz(outBar, -1)
-                        outBar := absBar
-                        outTime := int(time[off])
-                        outExt := c2Px
-    [outBar, outTime, outExt]
-
-QTU_cisdFindConfirmAfterC2(int c2Bar, float lvl, int dir, int confirmMaxBars, int offsetCap, int barIndex, int recentWindow, bool confirmed) =>
-    int confBar = na
-    int confT = na
-    if not na(c2Bar) and not na(lvl)
-        int left = math.max(QTU_cisdRecentMinBar(barIndex, recentWindow), c2Bar)
-        int right = math.min(barIndex, c2Bar + confirmMaxBars)
-        if left <= right
-            for absBar = left to right
-                int off = QTU_cisdAbsBarToOff(absBar, offsetCap, barIndex, recentWindow)
-                if not na(off) and QTU_cisdConfirmedIdx(off, confirmed) and (dir == 1 ? close[off] > lvl : dir == -1 ? close[off] < lvl : false)
-                    confBar := absBar
-                    confT := int(time[off])
-                    break
-    [confBar, confT]
-
-QTU_cisdC2ExtremeVeto(int dir, int c2Bar, float c2Ext, int htfC2Bar, int confBar, int offsetCap, int barIndex, int recentWindow, bool confirmed) =>
-    bool veto = false
-    if not na(c2Bar) and not na(c2Ext) and not na(confBar)
-        int c2DoneBar = na(htfC2Bar) ? c2Bar : math.max(c2Bar, htfC2Bar)
-        int left = math.max(QTU_cisdRecentMinBar(barIndex, recentWindow), c2DoneBar + 1)
-        int right = math.min(barIndex, confBar)
-        if left <= right
-            for absBar = left to right
-                int off = QTU_cisdAbsBarToOff(absBar, offsetCap, barIndex, recentWindow)
-                if not na(off) and QTU_cisdConfirmedIdx(off, confirmed)
-                    if QTU_cisdC2Invalidates(dir, c2Ext, low[off], high[off])
-                        veto := true
-                        break
-    veto
-
-QTU_cisdPickCoreFromLockedC2(int c2Bar, int dir, int coreScanBackBars, int coreScanCap, int barIndex, int recentWindow, int maxCandlesInput) =>
-    float pickLvl = na
-    int pickT = na
-    float pickInvLvl = na
-    if not na(c2Bar)
-        int scanLeftBar = math.max(QTU_cisdRecentMinBar(barIndex, recentWindow), c2Bar - coreScanBackBars)
-        int offC2 = QTU_cisdAbsBarToOff(c2Bar, coreScanCap, barIndex, recentWindow)
-        int offLeft = QTU_cisdAbsBarToOff(scanLeftBar, coreScanCap, barIndex, recentWindow)
-        if not na(offC2) and not na(offLeft) and offLeft >= offC2
-            bool scanUpclose = dir == -1
-            int maxCandles = math.max(1, maxCandlesInput)
-            int maxK = math.min(offLeft - offC2, coreScanCap - offC2)
-            bool c2Upclose = close[offC2] > open[offC2]
-            bool c2Downclose = close[offC2] < open[offC2]
-            int startK = (scanUpclose ? c2Upclose : c2Downclose) ? 0 : 1
-            int cnt = 0
-            float lastLvl = na
-            int lastT = na
-            float setInvLvl = na
-            float nthLvl = na
-            int nthT = na
-            float nthInvLvl = na
-            bool started = false
-            if startK <= maxK
-                for k = 0 to coreScanCap
-                    if k > maxK
-                        break
-                    if k >= startK
-                        int idx = offC2 + k
-                        if idx > coreScanCap or na(time[idx])
-                            break
-                        bool up = close[idx] > open[idx]
-                        bool dn = close[idx] < open[idx]
-                        bool ok = scanUpclose ? up : dn
-                        bool opp = scanUpclose ? dn : up
-                        if ok
-                            started := true
-                            cnt += 1
-                            lastLvl := open[idx]
-                            lastT := int(time[idx])
-                            setInvLvl := QTU_cisdBodyInvAccum(setInvLvl, dir, open[idx], close[idx])
-                            if cnt == maxCandles
-                                nthLvl := lastLvl
-                                nthT := lastT
-                                nthInvLvl := setInvLvl
-                                break
-                        else if started and opp
-                            break
-            if cnt >= maxCandles and not na(nthLvl) and not na(nthInvLvl)
-                pickLvl := nthLvl
-                pickInvLvl := nthInvLvl
-                pickT := nthT
-            else if cnt > 0 and not na(lastLvl) and not na(setInvLvl)
-                pickLvl := lastLvl
-                pickInvLvl := setInvLvl
-                pickT := lastT
-    [pickLvl, pickT, pickInvLvl]
-
-QTU_smtResetOnMarketGap(string token) =>
-    token == "15m" or token == "30m" or token == "90m" or token == "1H" or token == "4H" or token == "6H"
-
-QTU_smtAllowedBySequence(string token, string sequence, bool autoSmt) =>
-    if not autoSmt
-        true
-    else
-        bool gxt = sequence == "GXT Sequence"
-        gxt ? (token == "30m" or token == "90m" or token == "6H") : (token == "15m" or token == "1H" or token == "4H")
-
-QTU_sequenceOwner(string sequence) =>
-    sequence == "GXT Sequence" ? 2 : sequence == "Classic Sequence" ? 1 : 0
-
-QTU_sequenceOwnerActive(int owner, string sequence) =>
-    owner == 0 or owner == QTU_sequenceOwner(sequence)
-
-QTU_ssmtOwnerFromToken(string token) =>
-    token == "15m" or token == "1H" or token == "4H" ? 1 : token == "30m" or token == "90m" or token == "6H" ? 2 : 0
-
-QTU_ssmtOwnerCompatible(int a, int b) =>
-    a == b or a == 0 or b == 0
-
-QTU_ssmtOwnerMerge(int parentOwner, int childOwner) =>
-    parentOwner == childOwner ? childOwner : parentOwner == 0 ? childOwner : childOwner == 0 ? parentOwner : -1
-
-QTU_smtCleanupPivotA(string mode) =>
-    mode == "Pivot A only" or mode == "Pivot A+B" or mode == "Inside Range and Pivot A" or mode == "Inside Range & Pivot A+B"
-
-QTU_smtCleanupPivotB(string mode) =>
-    mode == "Pivot B only" or mode == "Pivot A+B" or mode == "Inside Range and Pivot B" or mode == "Inside Range & Pivot A+B"
-
-QTU_smtCleanupInside(string mode) =>
-    mode == "Inside A-B Range Only" or mode == "Inside Range and Pivot A" or mode == "Inside Range and Pivot B" or mode == "Inside Range & Pivot A+B"
-
-QTU_smtCleanupAbsorbOk(bool ownerOk, bool sameDir, bool sameCase, bool sameOrLowerCycle, bool neighborHandoff, bool pivotAOn, bool samePivotA, bool pivotBOn, bool samePivotB, bool insideOn, bool strictlyInside, int keeperRank, int oldRank) =>
-    bool sameOrHigherCycle = keeperRank >= oldRank
-    bool cycleOk = sameOrLowerCycle and sameOrHigherCycle
-    bool sameAb = samePivotA and samePivotB
-    bool pivotAOk = pivotAOn and samePivotA
-    bool pivotBOk = pivotBOn and samePivotB
-    bool insideOk = insideOn and strictlyInside
-    sameDir and sameCase and cycleOk and not neighborHandoff and (sameAb or ownerOk and (pivotAOk or pivotBOk or insideOk))
-
-QTU_ssmtKeeperBetter(int candidateRank, int currentRank, int dir, float candidateY1, float currentY1, int candidateBx1, int candidateBx2, int currentBx1, int currentBx2, float mintick) =>
-    bool better = candidateRank > currentRank
-    if not better and candidateRank == currentRank
-        float pt = QTU_eventPriceTol(candidateY1, currentY1, 1.0, mintick)
-        better := QTU_moreExtremeA(dir, candidateY1, currentY1, pt) or math.abs(candidateY1 - currentY1) <= pt and QTU_barSpan(candidateBx1, candidateBx2) > QTU_barSpan(currentBx1, currentBx2)
-    better
-
-QTU_tokensIntersect(string tokens, string allowed) =>
-    str.length(tokens) > 0 and str.length(allowed) > 0 and (QTU_pipeHasToken(tokens, "15m") and QTU_pipeHasToken(allowed, "15m") or QTU_pipeHasToken(tokens, "30m") and QTU_pipeHasToken(allowed, "30m") or QTU_pipeHasToken(tokens, "90m") and QTU_pipeHasToken(allowed, "90m") or QTU_pipeHasToken(tokens, "1H") and QTU_pipeHasToken(allowed, "1H") or QTU_pipeHasToken(tokens, "4H") and QTU_pipeHasToken(allowed, "4H") or QTU_pipeHasToken(tokens, "6H") and QTU_pipeHasToken(allowed, "6H") or QTU_pipeHasToken(tokens, "1D") and QTU_pipeHasToken(allowed, "1D") or QTU_pipeHasToken(tokens, "1W") and QTU_pipeHasToken(allowed, "1W") or QTU_pipeHasToken(tokens, "1M") and QTU_pipeHasToken(allowed, "1M") or QTU_pipeHasToken(tokens, "3M") and QTU_pipeHasToken(allowed, "3M") or QTU_pipeHasToken(tokens, "12M") and QTU_pipeHasToken(allowed, "12M"))
-
-QTU_ssmtOwnerTokensEnabled(string cycles, int owner, bool autoSmt, string sequence, string allowedTokens, bool ssShow) =>
-    ssShow and QTU_ssmtOwnerActive(owner, autoSmt, sequence) and QTU_tokensIntersect(cycles, allowedTokens)
-
-QTU_filterTokens(string tokens, string allowed) =>
-    string out = ""
-    if str.length(tokens) > 0 and str.length(allowed) > 0
-        out := QTU_pipeHasToken(tokens, "12M") and QTU_pipeHasToken(allowed, "12M") ? QTU_addToken(out, "12M") : out
-        out := QTU_pipeHasToken(tokens, "3M") and QTU_pipeHasToken(allowed, "3M") ? QTU_addToken(out, "3M") : out
-        out := QTU_pipeHasToken(tokens, "1M") and QTU_pipeHasToken(allowed, "1M") ? QTU_addToken(out, "1M") : out
-        out := QTU_pipeHasToken(tokens, "1W") and QTU_pipeHasToken(allowed, "1W") ? QTU_addToken(out, "1W") : out
-        out := QTU_pipeHasToken(tokens, "1D") and QTU_pipeHasToken(allowed, "1D") ? QTU_addToken(out, "1D") : out
-        out := QTU_pipeHasToken(tokens, "6H") and QTU_pipeHasToken(allowed, "6H") ? QTU_addToken(out, "6H") : out
-        out := QTU_pipeHasToken(tokens, "4H") and QTU_pipeHasToken(allowed, "4H") ? QTU_addToken(out, "4H") : out
-        out := QTU_pipeHasToken(tokens, "1H") and QTU_pipeHasToken(allowed, "1H") ? QTU_addToken(out, "1H") : out
-        out := QTU_pipeHasToken(tokens, "90m") and QTU_pipeHasToken(allowed, "90m") ? QTU_addToken(out, "90m") : out
-        out := QTU_pipeHasToken(tokens, "30m") and QTU_pipeHasToken(allowed, "30m") ? QTU_addToken(out, "30m") : out
-        out := QTU_pipeHasToken(tokens, "15m") and QTU_pipeHasToken(allowed, "15m") ? QTU_addToken(out, "15m") : out
-    out
-
-QTU_smtDisplayTokensForChart(string tokens, int chartSec) =>
-    string out = tokens
-    out := chartSec >= 300 ? QTU_removeToken(QTU_removeToken(out, "15m"), "30m") : out
-    out := chartSec >= 900 ? QTU_removeToken(QTU_removeToken(out, "1H"), "90m") : out
-    out := chartSec >= 3600 ? QTU_removeToken(QTU_removeToken(out, "4H"), "6H") : out
-    out
-
-QTU_smtAdjacentDuplicateRanks(int a, int b) =>
-    int hi = math.max(a, b)
-    math.abs(a - b) == 1 and (hi == 2 or hi == 4 or hi == 6)
-
-QTU_smtEnabledTokens(bool autoMode, string sequence, bool s15, bool s30, bool s90, bool s1h, bool s4h, bool s6h, bool s1d, bool s1w, bool s1m, bool s3m, bool s12m) =>
-    string out = ""
-    if autoMode
-        bool gxt = sequence == "GXT Sequence"
-        out := gxt ? QTU_addToken(out, "30m") : QTU_addToken(out, "15m")
-        out := gxt ? QTU_addToken(out, "90m") : QTU_addToken(out, "1H")
-        out := gxt ? QTU_addToken(out, "6H") : QTU_addToken(out, "4H")
-    else
-        out := s15 ? QTU_addToken(out, "15m") : out
-        out := s30 ? QTU_addToken(out, "30m") : out
-        out := s90 ? QTU_addToken(out, "90m") : out
-        out := s1h ? QTU_addToken(out, "1H") : out
-        out := s4h ? QTU_addToken(out, "4H") : out
-        out := s6h ? QTU_addToken(out, "6H") : out
-    out := s1d ? QTU_addToken(out, "1D") : out
-    out := s1w ? QTU_addToken(out, "1W") : out
-    out := s1m ? QTU_addToken(out, "1M") : out
-    out := s3m ? QTU_addToken(out, "3M") : out
-    out := s12m ? QTU_addToken(out, "12M") : out
-    out
-
 QTU_htfAutoTf(int bucket, int pane, string sequence) =>
     bool gxt = sequence == "GXT Sequence"
     switch bucket
@@ -2419,129 +1501,8 @@ QTU_htfAutoTf(int bucket, int pane, string sequence) =>
         6 => pane == 1 ? "M" : pane == 2 ? "3M" : "12M"
         7 => pane == 1 ? "3M" : pane == 2 ? "12M" : ""
         => pane == 1 ? "12M" : ""
-
-QTU_autoSeqCompareSlots(int bucket) =>
-    bucket == 0 ? 2 : bucket == 1 ? 3 : bucket == 2 ? 2 : bucket == 3 ? 1 : 0
-
-QTU_autoSeqComparePane(int bucket, int slot) =>
-    bucket == 0 ? (slot == 1 ? 3 : slot == 2 ? 2 : 0) : bucket == 1 ? (slot == 1 ? 3 : slot == 2 ? 2 : slot == 3 ? 1 : 0) : bucket == 2 ? (slot == 1 ? 2 : slot == 2 ? 1 : 0) : bucket == 3 ? (slot == 1 ? 1 : 0) : 0
-
-QTU_autoSeqCompareTf(int bucket, bool gxt, int slot) =>
-    if bucket == 0
-        slot == 1 ? (gxt ? "90" : "60") : slot == 2 ? (gxt ? "30" : "15") : ""
-    else if bucket == 1
-        slot == 1 ? (gxt ? "360" : "240") : slot == 2 ? (gxt ? "90" : "60") : slot == 3 ? (gxt ? "30" : "15") : ""
-    else if bucket == 2
-        slot == 1 ? (gxt ? "360" : "240") : slot == 2 ? (gxt ? "90" : "60") : ""
-    else if bucket == 3
-        slot == 1 ? (gxt ? "360" : "240") : ""
-    else
-        ""
-
-QTU_htfAutoCount(int bucket, int pane) =>
-    bucket <= 1 ? (pane == 1 ? 9 : pane == 2 ? 6 : 3) : bucket <= 6 ? (pane == 1 ? 6 : pane == 2 ? 4 : 2) : bucket == 7 ? (pane == 1 ? 6 : pane == 2 ? 4 : 0) : (pane == 1 ? 6 : 0)
-
 QTU_htfAutoBucket(int sec, int s3, int s15, int s60, int s240, int sd, int sw, int sm, int s3m) =>
     na(sec) ? 0 : sec < s3 ? 0 : sec < s15 ? 1 : sec < s60 ? 2 : sec < s240 ? 3 : sec < sd ? 4 : sec < sw ? 5 : sec < sm ? 6 : sec < s3m ? 7 : 8
-
-QTU_seqExactPick(string gxtSeq, string classicSeq, int gxtDir, int classicDir) =>
-    string seq = ""
-    if gxtDir != 0 and classicDir == 0
-        seq := gxtSeq
-    else if classicDir != 0 and gxtDir == 0
-        seq := classicSeq
-    seq
-
-QTU_sameDirScore(int d1, int d2, int d3) =>
-    int score = 0
-    score += d1 != 0 and d2 != 0 and d1 == d2 ? 1 : 0
-    score += d2 != 0 and d3 != 0 and d2 == d3 ? 1 : 0
-    score += d1 != 0 and d2 != 0 and d3 != 0 and d1 == d2 and d2 == d3 ? 1 : 0
-    score
-
-QTU_autoSequencePick(int bucket, int c1, int c2, int c3, int g1, int g2, int g3) =>
-    string classicSeq = "Classic Sequence"
-    string gxtSeq = "GXT Sequence"
-    string seq = ""
-    int pane = 0
-    int cs = 0
-    int gs = 0
-    int slots = QTU_autoSeqCompareSlots(bucket)
-    int cc1 = slots >= 1 ? c1 : 0
-    int cc2 = slots >= 2 ? c2 : 0
-    int cc3 = slots >= 3 ? c3 : 0
-    int gg1 = slots >= 1 ? g1 : 0
-    int gg2 = slots >= 2 ? g2 : 0
-    int gg3 = slots >= 3 ? g3 : 0
-    bool any = cc1 != 0 or cc2 != 0 or cc3 != 0 or gg1 != 0 or gg2 != 0 or gg3 != 0
-    if slots >= 1
-        seq := QTU_seqExactPick(gxtSeq, classicSeq, gg1, cc1)
-        pane := str.length(seq) > 0 ? 1 : pane
-    if str.length(seq) == 0 and slots >= 2
-        seq := QTU_seqExactPick(gxtSeq, classicSeq, gg2, cc2)
-        pane := str.length(seq) > 0 ? 2 : pane
-    if str.length(seq) == 0 and slots >= 3
-        seq := QTU_seqExactPick(gxtSeq, classicSeq, gg3, cc3)
-        pane := str.length(seq) > 0 ? 3 : pane
-    if str.length(seq) == 0
-        cs := QTU_sameDirScore(cc1, cc2, cc3)
-        gs := QTU_sameDirScore(gg1, gg2, gg3)
-        seq := any and gs >= cs ? gxtSeq : classicSeq
-        pane := slots > 0 ? 1 : 0
-    [seq, pane]
-
-QTU_autoSequencePaneNeeded(int bucket, int pane) =>
-    pane > 0 and pane <= QTU_autoSeqCompareSlots(bucket)
-
-QTU_autoSequenceSig(int bucket, int ct1, int ct2, int ct3, int gt1, int gt2, int gt3, int cd1, int cd2, int cd3, int gd1, int gd2, int gd3) =>
-    bucket * 1009 + nz(ct1, 0) * 3 + nz(ct2, 0) * 5 + nz(ct3, 0) * 7 + nz(gt1, 0) * 11 + nz(gt2, 0) * 13 + nz(gt3, 0) * 17 + cd1 * 19 + cd2 * 23 + cd3 * 29 + gd1 * 31 + gd2 * 37 + gd3 * 41
-
-QTU_autoSequencePickTf(int pane, string sequence, string c1, string c2, string c3, string g1, string g2, string g3) =>
-    bool gxt = sequence == "GXT Sequence"
-    pane == 1 ? (gxt ? g1 : c1) : pane == 2 ? (gxt ? g2 : c2) : pane == 3 ? (gxt ? g3 : c3) : ""
-
-QTU_biasPickDir(string source, int d1, int d2, int d3) =>
-    source == "TF1" ? d1 : source == "TF3" ? d3 : source == "TF2 + TF3 Fallback" ? (d2 != 0 ? d2 : d3) : source == "TF2 + TF1 Fallback" ? (d2 != 0 ? d2 : d1) : d2
-
-QTU_biasPickPane(string source, int d1, int d2, int d3) =>
-    source == "TF1" ? (d1 != 0 ? 1 : 0) : source == "TF3" ? (d3 != 0 ? 3 : 0) : source == "TF2 + TF3 Fallback" ? (d2 != 0 ? 2 : d3 != 0 ? 3 : 0) : source == "TF2 + TF1 Fallback" ? (d2 != 0 ? 2 : d1 != 0 ? 1 : 0) : d2 != 0 ? 2 : 0
-
-QTU_biasOppSweep(bool enabled, int srcDir, int sweepDir, int sweepX) =>
-    enabled and srcDir != 0 and sweepDir == -srcDir and not na(sweepX)
-
-QTU_biasBlockClear(int blockSweepX, int srcDir, int sweepDir, int sweepX) =>
-    not na(blockSweepX) and (sweepDir != -srcDir or na(sweepX))
-
-QTU_biasConfirmOk(bool enabled, int srcDir, int c2Dir, int sweepDir) =>
-    enabled and srcDir != 0 and (c2Dir == srcDir or sweepDir == srcDir)
-
-QTU_biasAccept(bool enabled, int srcDir, bool confirmOk, bool c4Closed, int blockSweepX) =>
-    enabled and srcDir != 0 and confirmOk and not c4Closed and na(blockSweepX)
-
-QTU_biasSourcePane(bool accepted, string source) =>
-    accepted ? (source == "TF1" ? 1 : 2) : 0
-
-QTU_biasCtx(bool sourceTf1, int d1, int x1, bool c4_1, int d2, int x2, bool c4_2, int d3, int sw2, int swx2, int sw3, int swx3) =>
-    [sourceTf1 ? d1 : d2, sourceTf1 ? x1 : x2, sourceTf1 ? d2 : d3, sourceTf1 ? sw2 : sw3, sourceTf1 ? swx2 : swx3, sourceTf1 ? c4_1 : c4_2]
-
-QTU_biasSourceX(bool enabled, int pane, int x1, int x2) =>
-    enabled ? (pane == 1 ? x1 : pane == 2 ? x2 : na) : na
-
-QTU_biasResolveFinal(bool enabled, string source, int blockSrcX, int blockSweepX, int d1, int x1, bool c4_1, int d2, int x2, bool c4_2, int d3, int sw2, int swx2, int sw3, int swx3) =>
-    [srcDir, srcX, confirmC2Dir, confirmSweepDir, confirmSweepX, srcC4Closed] = QTU_biasCtx(source == "TF1", d1, x1, c4_1, d2, x2, c4_2, d3, sw2, swx2, sw3, swx3)
-    int nextBlockSrcX = blockSrcX
-    int nextBlockSweepX = blockSweepX
-    if enabled and srcX != blockSrcX
-        nextBlockSrcX := srcX
-        nextBlockSweepX := na
-    if QTU_biasOppSweep(enabled, srcDir, confirmSweepDir, confirmSweepX)
-        nextBlockSweepX := confirmSweepX
-    else if QTU_biasBlockClear(nextBlockSweepX, srcDir, confirmSweepDir, confirmSweepX)
-        nextBlockSweepX := na
-    bool accepted = QTU_biasAccept(enabled, srcDir, QTU_biasConfirmOk(enabled, srcDir, confirmC2Dir, confirmSweepDir), srcC4Closed, nextBlockSweepX)
-    int pane = QTU_biasSourcePane(accepted, source)
-    [accepted ? srcDir : 0, pane, QTU_biasSourceX(enabled, pane, x1, x2), nextBlockSrcX, nextBlockSweepX]
-
 QTU_htfLabel(string tf) =>
     float n = str.tonumber(tf)
     if not na(n)
@@ -2549,140 +1510,12 @@ QTU_htfLabel(string tf) =>
         m < 60 ? str.tostring(m) + "m" : m % 60 == 0 ? str.tostring(int(m / 60)) + "H" : str.tostring(m) + "m"
     else
         tf == "D" or tf == "1D" ? "1D" : tf == "W" or tf == "1W" ? "1W" : tf == "M" or tf == "1M" ? "1M" : tf == "12M" ? "1Y" : tf
-
-QTU_htfPairText(string chartTf, string seqTf) =>
-    QTU_htfLabel(chartTf) + " → " + QTU_htfLabel(seqTf) + " "
-
-QTU_htfSourceLabel(string tf, bool src) =>
-    QTU_htfLabel(tf) + (src ? " ●" : "")
-
-QTU_labelPad(float top, float bottom, float mintick) =>
-    not na(top) and not na(bottom) ? math.max(math.abs(top - bottom) * 0.06, mintick * 12.0) : mintick * 12.0
-
-QTU_c123LabelY(float h, float l, bool bull, float mintick) =>
-    float off = math.max(math.abs(h - l) * 0.012, mintick * 3.0)
-    bull ? l - off : h + off
-
-QTU_c2Eq(float h, float l, float o, float c, bool bull) =>
-    bull ? math.avg(l, math.min(o, c)) : math.avg(h, math.max(o, c))
-
-QTU_candleEq(float h, float l) =>
-    math.avg(h, l)
-
-QTU_isDailyTf(string tf) =>
-    tf == "D" or tf == "1D"
-
-QTU_remTime(int t, int now) =>
-    int s = na(t) ? na : int(math.max(0, (t - now) / 1000))
-    if na(s)
-        ""
-    else
-        int d = int(math.floor(s / 86400))
-        int h = int(math.floor((s - d * 86400) / 3600))
-        int m = int(math.floor((s - d * 86400 - h * 3600) / 60))
-        int r = s - d * 86400 - h * 3600 - m * 60
-        string out = str.tostring(r, "00")
-        if m > 0 or h > 0 or d > 0
-            out := str.tostring(m, "00") + ":" + out
-        if h > 0 or d > 0
-            out := str.tostring(h, "00") + ":" + out
-        if d > 0
-            out := str.tostring(d) + "D " + out
-        "(" + out + ")"
-
-QTU_dash(int n) =>
-    str.substring(QTU_DASH, 0, math.min(n, 40))
-
-QTU_fieldDash(string header, string value) =>
-    QTU_dash(math.max(str.length(header), str.length(value)))
-
-QTU_statusCell(table tbl, int c, int r, string txt, color clr, string fontFam) =>
-    table.cell(tbl, c, r, txt, text_color = clr, text_halign = text.align_center, text_size = size.small, bgcolor = #FFFFFF00, text_font_family = fontFam)
-    0
-
-QTU_statusCellLeft(table tbl, int c, int r, string txt, color clr, string fontFam) =>
-    table.cell(tbl, c, r, txt, text_color = clr, text_halign = text.align_left, text_size = size.small, bgcolor = #FFFFFF00, text_font_family = fontFam)
-    0
-
-QTU_statusPos(string pos) =>
-    pos == "Top Center" ? position.top_center : pos == "Bottom Right" ? position.bottom_right : pos == "Top Right" ? position.top_right : position.bottom_center
-
-QTU_renderStatusTable(table tbl, string pos, string fontFam, bool modelShow, bool biasShow, bool autoShow, bool assetsShow, string chartTf, string seqTf, int biasDir, bool autoMode, bool autoSeq, bool autoSmt, bool offMode, string current, bool ok1, string sym1, bool ok2, string sym2, color bullClr, color bearClr, color neutralClr, color hlClr, color textClr) =>
-    table.set_position(tbl, QTU_statusPos(pos))
-    table.clear(tbl, 0, 0, 3, 4)
-    color stateClr = QTU_biasColor(biasDir, bullClr, bearClr, neutralClr)
-    color biasClr = offMode ? textClr : stateClr
-    string htf = QTU_htfPairText(chartTf, seqTf)
-    string auto = autoShow ? QTU_autoText(autoMode, autoSeq, autoSmt) : ""
-    string bias = QTU_biasText(biasDir, offMode)
-    string assets = QTU_assetChain(QTU_bareTicker(current), ok1, sym1, ok2, sym2)
-    int spacerRow = pos == "Top Center" ? 0 : pos == "Bottom Center" ? 4 : na
-    if not na(spacerRow)
-        QTU_statusCell(tbl, 1, spacerRow, " ", #FFFFFF00, fontFam)
-    if modelShow
-        QTU_statusCell(tbl, 0, 1, "MODEL", textClr, fontFam)
-        QTU_statusCell(tbl, 0, 2, QTU_fieldDash("MODEL", htf), textClr, fontFam)
-        QTU_statusCell(tbl, 0, 3, htf, hlClr, fontFam)
-    if biasShow
-        QTU_statusCell(tbl, 1, 1, "BIAS", textClr, fontFam)
-        QTU_statusCell(tbl, 1, 2, QTU_fieldDash("BIAS", bias), biasClr, fontFam)
-        QTU_statusCell(tbl, 1, 3, bias, biasClr, fontFam)
-    if autoShow
-        QTU_statusCell(tbl, 2, 1, "AUTO", textClr, fontFam)
-        QTU_statusCell(tbl, 2, 2, QTU_fieldDash("AUTO", auto), textClr, fontFam)
-        QTU_statusCell(tbl, 2, 3, auto, textClr, fontFam)
-    if assetsShow
-        int assetsCol = autoShow ? 3 : 2
-        QTU_statusCell(tbl, assetsCol, 1, "ASSETS", textClr, fontFam)
-        QTU_statusCell(tbl, assetsCol, 2, QTU_fieldDash("ASSETS", assets), textClr, fontFam)
-        QTU_statusCell(tbl, assetsCol, 3, assets, textClr, fontFam)
-    0
-
-
-// Profiler presentation and C3 closure helpers (publish before updating consumers).
-// Equality does not reclaim a failed sweep. Confirmation only comes from a closed source candle.
-QTU_htfClosureDecision(bool highSide, float level, float sourceClose, bool sourceClosed) =>
-    bool accepted = not na(level) and not na(sourceClose) and (highSide ? sourceClose < level : sourceClose > level)
-    [accepted, sourceClosed and accepted, sourceClosed and not accepted]
-
-// Latest BODY intersection in the completed source interval; no wick or fabricated fallback.
-QTU_keyLevelBodyOffset(float level, int sourceOpen, int sourceClose, int scanBars) =>
-    int found = na
-    int limit = math.min(math.min(scanBars, bar_index), 5000)
-    if not na(level) and limit >= 1
-        for offset = 1 to limit
-            if time[offset] >= sourceOpen and time_close[offset] <= sourceClose and math.min(open[offset], close[offset]) <= level and math.max(open[offset], close[offset]) >= level
-                found := offset
-                break
-    found
-
 QTU_smtStackedLabel(string timeframeLabel, string assetLabel) =>
     timeframeLabel + "\n" + assetLabel
-
 QTU_smtLabelPrice(int direction, float priceA, float priceB, float tickSize) =>
     float midpoint = math.avg(priceA, priceB)
     float clearance = math.max(math.abs(priceA - priceB) * 0.10, tickSize * 8.0)
     math.round((direction == 1 ? midpoint - clearance : midpoint + clearance) / tickSize) * tickSize
-
-// Composite translucent pane paint against the chart, not against an underlying FVG.
-// Keeps the same tint without another box/underlay per candle.
-QTU_paneBodyPaint(color foreground, color background) =>
-    float alpha = 1.0 - color.t(foreground) / 100.0
-    color.t(foreground) == 0 ? foreground : color.rgb(int(math.round(color.r(foreground) * alpha + color.r(background) * (1.0 - alpha))), int(math.round(color.g(foreground) * alpha + color.g(background) * (1.0 - alpha))), int(math.round(color.b(foreground) * alpha + color.b(background) * (1.0 - alpha))))
-
-// Direction-normalized HTF filter measurement. Closed candles remain fixed; live OHLC rolls back normally.
-QTU_htfFilterLevel(float candleHigh, float candleLow, bool bullish, float fraction) =>
-    bullish ? candleLow + (candleHigh - candleLow) * fraction : candleHigh - (candleHigh - candleLow) * fraction
-
-// One measurement owns its line, optional zone and caption in the host's existing last-bar bins.
-QTU_drawHtfFilter(array<line> lines, array<box> boxes, array<label> labels, int left, int right, float level, float opening, color paint, string QTU_lineStyle, string caption, bool showZone, bool showLabel) =>
-    if not na(level) and line.all.size() < 490
-        if showZone and level != opening and box.all.size() < 490
-            boxes.push(box.new(left=left, top=math.max(level, opening), right=right, bottom=math.min(level, opening), xloc=xloc.bar_index, border_color=#FFFFFF00, bgcolor=color.new(paint, 90)))
-        lines.push(line.new(x1=left, y1=level, x2=right, y2=level, xloc=xloc.bar_index, color=paint, style=QTU_lineStyle, width=1))
-        if showLabel and label.all.size() < 490
-            labels.push(label.new(x=right + 1, y=level, text=caption, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=#FFFFFF00, textcolor=paint, size=size.tiny))
-    0
 
 
 // ============================================================================
