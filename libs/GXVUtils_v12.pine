@@ -1,0 +1,1181 @@
+//@version=6
+library("GXVUtils", overlay = true)
+
+const string DASH = "────────────────────────────────────────"
+
+export bareTicker(string tickerStr) =>
+    int pos = str.pos(tickerStr, ":")
+    not na(pos) ? str.substring(tickerStr, pos + 1) : tickerStr
+
+export hasSymbol(string s) =>
+    str.length(s) > 0
+
+export sameSymbol(string a, string b) =>
+    hasSymbol(a) and hasSymbol(b) and bareTicker(a) == bareTicker(b)
+
+export sameSymbolLoose(string a, string b) =>
+    str.upper(a) == str.upper(b) or str.upper(bareTicker(a)) == str.upper(bareTicker(b))
+
+export priorityAssetLabel(string assets, string pair1, string pair2) =>
+    string out = ""
+    if str.length(assets) > 0
+        bool has1 = str.length(pair1) > 0 and str.contains("|" + assets + "|", "|" + pair1 + "|")
+        bool has2 = str.length(pair2) > 0 and str.contains("|" + assets + "|", "|" + pair2 + "|")
+        out := has1 ? pair1 : has2 ? pair2 : assets
+    str.length(out) > 0 ? bareTicker(out) : out
+
+export ssmtOwnerActive(int owner, bool autoSmt, string sequence) =>
+    not autoSmt or owner == 0 or (sequence == "GXT Sequence" ? owner == 2 : owner == 1)
+
+export bodyDir(float o, float c) =>
+    c > o ? 1 : c < o ? -1 : 0
+
+export autoSequenceReq() =>
+    int dir = 0
+    if high[1] > high[2] and close[1] < high[2] and high <= high[1]
+        dir := -1
+    else if low[1] < low[2] and close[1] > low[2] and low >= low[1]
+        dir := 1
+    dir
+
+export prevHlReq() =>
+    [high[1], low[1]]
+
+export htfSmtReq() =>
+    [bodyDir(open, close), bodyDir(open[1], close[1]), high, low, high[1], low[1]]
+
+export isMidPrefix(string px) =>
+    px == "CAPITALCOM" or px == "CMCMARKETS"
+
+export isChicagoPrefix(string px) =>
+    px == "CME" or px == "CBOT" or px == "CBOT_MINI" or px == "CBOT_DL" or px == "CME_MINI" or px == "CME_DL" or px == "CME_MINI_DL" or px == "COMEX" or px == "NYMEX"
+
+export isUtcPrefix(string px) =>
+    px == "BINANCE" or px == "BYBIT" or px == "KRAKEN" or px == "GATE.IO" or px == "BITSTAMP" or px == "COINBASE" or px == "GEMINI"
+
+export oracleTz(string px) =>
+    isChicagoPrefix(px) ? "America/Chicago" : isMidPrefix(px) ? "Etc/GMT+5" : isUtcPrefix(px) ? "UTC" : "America/New_York"
+
+export oracleDayStartHour(string px) =>
+    isChicagoPrefix(px) or isMidPrefix(px) ? 17 : isUtcPrefix(px) ? 22 : 18
+
+export quarterSubCycleIndex(int barTime, int dayStartTime, string tz, int startHour) =>
+    int cy = year(dayStartTime, tz)
+    int cm = month(dayStartTime, tz)
+    int qsM = int(math.floor((cm - 1) / 3)) * 3 + 1
+    int qsT = timestamp(tz, cy, qsM, 1, startHour, 0)
+    int qeT = qsM == 10 ? timestamp(tz, cy + 1, 1, 1, startHour, 0) : timestamp(tz, cy, qsM + 3, 1, startHour, 0)
+    int q = int(math.floor((barTime - qsT) * 4.0 / math.max(1, qeT - qsT)))
+    math.max(0, math.min(3, q))
+
+export monthOfQuarterIndex(int dayStartTime, string tz) =>
+    int cm = month(dayStartTime, tz)
+    int qsM = int(math.floor((cm - 1) / 3)) * 3 + 1
+    cm - qsM
+
+export daysSinceSunday(int dow) =>
+    dow == dayofweek.sunday ? 0 : dow == dayofweek.monday ? 1 : dow == dayofweek.tuesday ? 2 : dow == dayofweek.wednesday ? 3 : dow == dayofweek.thursday ? 4 : dow == dayofweek.friday ? 5 : 6
+
+export smtAnchorRangeKey(int barTime, int anchorTime, int rangeMinutes) =>
+    int rangeMs = rangeMinutes * 60 * 1000
+    anchorTime + int(math.floor((barTime - anchorTime) / rangeMs)) * rangeMs
+
+export smtIsoWeekYear(int refTime, string tz) =>
+    int wy = year(refTime, tz)
+    int wm = month(refTime, tz)
+    int cw = weekofyear(refTime, tz)
+    wy := wm == 12 and cw == 1 ? wy + 1 : wm == 1 and cw >= 52 ? wy - 1 : wy
+    wy
+
+export smtIsoWeekRangeKey(int dayStartTime, int oneDayMs, string tz) =>
+    int refTime = dayStartTime + oneDayMs
+    smtIsoWeekYear(refTime, tz) * 100 + weekofyear(refTime, tz)
+
+export smtMonthOfQuarterRangeKey(int dayStartTime, string tz) =>
+    int cy = year(dayStartTime, tz)
+    int cm = month(dayStartTime, tz)
+    cy * 100 + (int(math.floor((cm - 1) / 3)) + 1) * 10 + monthOfQuarterIndex(dayStartTime, tz)
+
+export smtQuarterSubrangeKey(int barTime, int dayStartTime, string tz, int startHour) =>
+    int cy = year(dayStartTime, tz)
+    int cm = month(dayStartTime, tz)
+    (cy * 100) + (int(math.floor((cm - 1) / 3)) + 1) * 10 + quarterSubCycleIndex(barTime, dayStartTime, tz, startHour)
+
+export smtFourYearPhase(int y) =>
+    y % 4 == 3 ? 0 : y % 4 == 0 ? 1 : y % 4 == 1 ? 2 : 3
+
+export smtFourYearRangeKey(int barTime, string tz) =>
+    int y = year(barTime, tz)
+    int(math.floor(y / 4)) * 10 + smtFourYearPhase(y)
+
+export bodyTouches(float o, float c, float lvl) =>
+    math.min(o, c) <= lvl and math.max(o, c) >= lvl
+
+export lineCrossesBody(int bx1, float y1, int bx2, float y2, int barIndex) =>
+    bool crosses = false
+    bool ok = not na(bx1) and not na(bx2) and bx1 != bx2
+    if ok
+        int left = math.min(bx1, bx2)
+        int right = math.max(bx1, bx2)
+        int safeLeft = math.max(left + 1, barIndex - 4999)
+        int safeRight = math.min(right - 1, barIndex)
+        int span = bx2 - bx1
+        if safeLeft <= safeRight
+            float slope = (y2 - y1) / span
+            for b = safeLeft to safeRight
+                int off = barIndex - b
+                float op = open[off]
+                float cl = close[off]
+                float bodyLo = op < cl ? op : cl
+                float bodyHi = op > cl ? op : cl
+                float lineY = y1 + slope * (b - bx1)
+                if lineY > bodyLo and lineY < bodyHi
+                    crosses := true
+                    break
+    crosses
+
+export isBullishCandle(float c, float o, float h, float l) =>
+    c == o ? math.abs(o - h) < math.abs(o - l) : c > o
+
+export biasColor(int dir, color bull, color bear, color neutral) =>
+    dir == 1 ? bull : dir == -1 ? bear : neutral
+
+export biasSide(int side, bool bullOk, bool bearOk) =>
+    side == 1 ? bullOk : side == -1 ? bearOk : true
+
+export biasSsmt(int dir, bool unbiasedSmt, bool filterOn, bool bullOk, bool bearOk) =>
+    unbiasedSmt and filterOn ? true : dir == -1 ? bullOk : dir == 1 ? bearOk : true
+
+export biasHtfSmt(int side, bool unbiasedSmt, bool filterOn, bool bullOk, bool bearOk) =>
+    unbiasedSmt and filterOn or biasSide(side, bullOk, bearOk)
+
+export biasText(int dir, bool offMode) =>
+    dir == 1 ? "BULLISH" : dir == -1 ? "BEARISH" : offMode ? "OFF" : "NEUTRAL"
+
+export autoText(bool autoMode, bool autoSeq, bool autoSmt) =>
+    autoMode ? autoSeq and autoSmt ? "ON ●" : "HYBRID ●" : "OFF ●"
+
+export autoStateText(bool biasAuto, bool autoSeq, bool autoSmt) =>
+    biasAuto ? autoSeq and autoSmt ? "ON" : "HYBRID" : "OFF"
+
+export autoDotColor(bool biasAuto, color onClr, color offClr) =>
+    biasAuto ? onClr : offClr
+
+export smtMaskHas(int mask, int bit) =>
+    bit > 0 and int(math.floor(mask / bit)) % 2 == 1
+
+export smtMaskAdd(int mask, int bit) =>
+    smtMaskHas(mask, bit) ? mask : mask + bit
+
+export smtMaskRemove(int mask, int bit) =>
+    smtMaskHas(mask, bit) ? mask - bit : mask
+
+export smtRankBit(int rank) =>
+    rank == 1 ? 1 : rank == 2 ? 2 : rank == 3 ? 8 : rank == 4 ? 4 : rank == 5 ? 16 : rank == 6 ? 32 : rank == 7 ? 2048 : rank == 8 ? 4096 : rank == 9 ? 64 : rank == 10 ? 128 : rank == 11 ? 256 : rank == 12 ? 512 : rank == 13 ? 1024 : 0
+
+export smtMaskMerge(int a, int b) =>
+    int out = a
+    out := smtMaskHas(b, 1) ? smtMaskAdd(out, 1) : out
+    out := smtMaskHas(b, 2) ? smtMaskAdd(out, 2) : out
+    out := smtMaskHas(b, 4) ? smtMaskAdd(out, 4) : out
+    out := smtMaskHas(b, 8) ? smtMaskAdd(out, 8) : out
+    out := smtMaskHas(b, 16) ? smtMaskAdd(out, 16) : out
+    out := smtMaskHas(b, 32) ? smtMaskAdd(out, 32) : out
+    out := smtMaskHas(b, 2048) ? smtMaskAdd(out, 2048) : out
+    out := smtMaskHas(b, 4096) ? smtMaskAdd(out, 4096) : out
+    out := smtMaskHas(b, 64) ? smtMaskAdd(out, 64) : out
+    out := smtMaskHas(b, 128) ? smtMaskAdd(out, 128) : out
+    out := smtMaskHas(b, 256) ? smtMaskAdd(out, 256) : out
+    out := smtMaskHas(b, 512) ? smtMaskAdd(out, 512) : out
+    out := smtMaskHas(b, 1024) ? smtMaskAdd(out, 1024) : out
+    out
+
+export smtMaskIntersects(int a, int b) =>
+    a > 0 and b > 0 and (smtMaskHas(a, 1) and smtMaskHas(b, 1) or smtMaskHas(a, 2) and smtMaskHas(b, 2) or smtMaskHas(a, 4) and smtMaskHas(b, 4) or smtMaskHas(a, 8) and smtMaskHas(b, 8) or smtMaskHas(a, 16) and smtMaskHas(b, 16) or smtMaskHas(a, 32) and smtMaskHas(b, 32) or smtMaskHas(a, 2048) and smtMaskHas(b, 2048) or smtMaskHas(a, 4096) and smtMaskHas(b, 4096) or smtMaskHas(a, 64) and smtMaskHas(b, 64) or smtMaskHas(a, 128) and smtMaskHas(b, 128) or smtMaskHas(a, 256) and smtMaskHas(b, 256) or smtMaskHas(a, 512) and smtMaskHas(b, 512) or smtMaskHas(a, 1024) and smtMaskHas(b, 1024))
+
+export smtMaskFilter(int mask, int allowed) =>
+    int out = 0
+    out := smtMaskHas(mask, 1) and smtMaskHas(allowed, 1) ? smtMaskAdd(out, 1) : out
+    out := smtMaskHas(mask, 2) and smtMaskHas(allowed, 2) ? smtMaskAdd(out, 2) : out
+    out := smtMaskHas(mask, 4) and smtMaskHas(allowed, 4) ? smtMaskAdd(out, 4) : out
+    out := smtMaskHas(mask, 8) and smtMaskHas(allowed, 8) ? smtMaskAdd(out, 8) : out
+    out := smtMaskHas(mask, 16) and smtMaskHas(allowed, 16) ? smtMaskAdd(out, 16) : out
+    out := smtMaskHas(mask, 32) and smtMaskHas(allowed, 32) ? smtMaskAdd(out, 32) : out
+    out := smtMaskHas(mask, 2048) and smtMaskHas(allowed, 2048) ? smtMaskAdd(out, 2048) : out
+    out := smtMaskHas(mask, 4096) and smtMaskHas(allowed, 4096) ? smtMaskAdd(out, 4096) : out
+    out := smtMaskHas(mask, 64) and smtMaskHas(allowed, 64) ? smtMaskAdd(out, 64) : out
+    out := smtMaskHas(mask, 128) and smtMaskHas(allowed, 128) ? smtMaskAdd(out, 128) : out
+    out := smtMaskHas(mask, 256) and smtMaskHas(allowed, 256) ? smtMaskAdd(out, 256) : out
+    out := smtMaskHas(mask, 512) and smtMaskHas(allowed, 512) ? smtMaskAdd(out, 512) : out
+    out := smtMaskHas(mask, 1024) and smtMaskHas(allowed, 1024) ? smtMaskAdd(out, 1024) : out
+    out
+
+export smtMaskRank(int mask) =>
+    smtMaskHas(mask, 1024) ? 13 : smtMaskHas(mask, 512) ? 12 : smtMaskHas(mask, 256) ? 11 : smtMaskHas(mask, 128) ? 10 : smtMaskHas(mask, 64) ? 9 : smtMaskHas(mask, 4096) ? 8 : smtMaskHas(mask, 2048) ? 7 : smtMaskHas(mask, 32) ? 6 : smtMaskHas(mask, 16) ? 5 : smtMaskHas(mask, 4) ? 4 : smtMaskHas(mask, 8) ? 3 : smtMaskHas(mask, 2) ? 2 : smtMaskHas(mask, 1) ? 1 : 0
+
+export smtMaskHighestBit(int mask) =>
+    smtMaskHas(mask, 1024) ? 1024 : smtMaskHas(mask, 512) ? 512 : smtMaskHas(mask, 256) ? 256 : smtMaskHas(mask, 128) ? 128 : smtMaskHas(mask, 64) ? 64 : smtMaskHas(mask, 4096) ? 4096 : smtMaskHas(mask, 2048) ? 2048 : smtMaskHas(mask, 32) ? 32 : smtMaskHas(mask, 16) ? 16 : smtMaskHas(mask, 4) ? 4 : smtMaskHas(mask, 8) ? 8 : smtMaskHas(mask, 2) ? 2 : smtMaskHas(mask, 1) ? 1 : 0
+
+smtMaskAddDisplay(string out, int mask, int bit, string displayText) =>
+    smtMaskHas(mask, bit) ? (str.length(out) == 0 ? displayText : out + " + " + displayText) : out
+
+export smtMaskTokensToDisplay(int mask) =>
+    string out = ""
+    if mask > 0
+        out := smtMaskAddDisplay(out, mask, 1024, "12M")
+        out := smtMaskAddDisplay(out, mask, 512, "3M")
+        out := smtMaskAddDisplay(out, mask, 256, "1M")
+        out := smtMaskAddDisplay(out, mask, 128, "1W")
+        out := smtMaskAddDisplay(out, mask, 64, "1D")
+        out := smtMaskAddDisplay(out, mask, 4096, "12H")
+        out := smtMaskAddDisplay(out, mask, 2048, "7H")
+        out := smtMaskAddDisplay(out, mask, 32, "6H")
+        out := smtMaskAddDisplay(out, mask, 16, "4H")
+        out := smtMaskAddDisplay(out, mask, 8, "1H")
+        out := smtMaskAddDisplay(out, mask, 4, "90m")
+        out := smtMaskAddDisplay(out, mask, 2, "30m")
+        out := smtMaskAddDisplay(out, mask, 1, "15m")
+    out
+
+export smtRankName(int rank) =>
+    rank == 1 ? "15m" : rank == 2 ? "30m" : rank == 3 ? "1H" : rank == 4 ? "90m" : rank == 5 ? "4H" : rank == 6 ? "6H" : rank == 7 ? "7H" : rank == 8 ? "12H" : rank == 9 ? "1D" : rank == 10 ? "1W" : rank == 11 ? "1M" : rank == 12 ? "3M" : rank == 13 ? "12M" : ""
+
+export smtPairNameForSlot(int pairSlot, string pair1, string pair2) =>
+    pairSlot == 1 ? pair1 : pairSlot == 2 ? pair2 : ""
+
+export smtLabelText(string style, string shortname, string pairName) =>
+    style == "Asset Only" ? "SMT " + pairName : style == "TF Only" ? shortname + " SMT" : shortname + " SMT " + pairName
+
+export smtDefaultLabelText(int rank, int pairSlot, string pair1, string pair2, string style) =>
+    smtLabelText(style, smtRankName(rank), smtPairNameForSlot(pairSlot, pair1, pair2))
+
+export smtBypassLabelText(int rank, int pairSlot, string pair1, string pair2, string style) =>
+    style == "Asset Only" ? smtPairNameForSlot(pairSlot, pair1, pair2) : smtRankName(rank)
+
+export smtLabelGateSeconds(int rank, int sec5, int sec15, int sec60, int sec240, int sec360, int secD, int secM) =>
+    rank <= 2 ? sec5 : rank <= 4 ? sec15 : rank <= 7 ? sec60 : rank <= 9 ? sec240 : rank <= 11 ? sec360 : rank == 12 ? secD : secM
+
+export smtMaskLabelCycles(int mask, bool hideLtf) =>
+    hideLtf ? smtMaskFilter(mask, 8188) : mask
+
+export smtMaskEventLabel(int mask, string assets, string pair1, string pair2) =>
+    string cy = smtMaskTokensToDisplay(mask)
+    string assetTxt = priorityAssetLabel(assets, pair1, pair2)
+    str.length(assetTxt) > 0 ? cy + " " + assetTxt : cy
+
+export smtMaskSssmtLabel(int mask, string assets, string pair1, string pair2) =>
+    string base = smtMaskEventLabel(mask, assets, pair1, pair2)
+    str.length(base) > 0 ? "SS " + base : "SS"
+
+export smtRenderEligible(int cycles, int displayMask, int pivotX, bool currentDayOnly, int dayStart, bool ownerOk) =>
+    bool pivotOk = not currentDayOnly or (not na(pivotX) and pivotX >= dayStart)
+    ownerOk and pivotOk and smtMaskIntersects(cycles, displayMask)
+
+export smtRenderPrep(int cycles, int displayMask, int pivotBX, bool currentDayOnly, int dayStart, bool hideLtf, bool hideCleanup, bool useSS, string assets, string pair1, string pair2, bool ownerOk) =>
+    bool pivotOk = not currentDayOnly or (not na(pivotBX) and pivotBX >= dayStart)
+    int displayCycles = pivotOk ? smtMaskFilter(cycles, displayMask) : 0
+    int labelCycles = useSS ? displayCycles : smtMaskLabelCycles(displayCycles, hideLtf)
+    labelCycles := hideCleanup ? smtMaskHighestBit(labelCycles) : labelCycles
+    string txt = useSS ? smtMaskSssmtLabel(labelCycles, assets, pair1, pair2) : smtMaskEventLabel(labelCycles, assets, pair1, pair2)
+    [displayCycles, txt, ownerOk and displayCycles != 0, labelCycles == 0]
+
+export smtRenderColors(bool hideLines, bool hideLabels, bool biasOk, bool cycleOk, bool hideCycleLabel, color baseLine, color baseText) =>
+    [hideLines or not biasOk or not cycleOk ? #FFFFFF00 : baseLine, hideLabels or hideCycleLabel or not biasOk or not cycleOk ? #FFFFFF00 : baseText]
+
+export smtDisplayMaskForChart(int mask, int chartSec) =>
+    int out = mask
+    if chartSec >= 300
+        out := smtMaskRemove(smtMaskRemove(out, 1), 2)
+    if chartSec >= 900
+        out := smtMaskRemove(smtMaskRemove(out, 8), 4)
+    if chartSec >= 3600
+        out := smtMaskRemove(smtMaskRemove(out, 16), 32)
+    out
+
+export smtEnabledMask(bool autoMode, string sequence, bool s15, bool s30, bool s90, bool s1h, bool s4h, bool s6h, bool s1d, bool s1w, bool s1m, bool s3m, bool s12m) =>
+    int out = 0
+    if autoMode
+        bool gxt = sequence == "GXT Sequence"
+        out := smtMaskAdd(out, gxt ? 2 : 1)
+        out := smtMaskAdd(out, gxt ? 4 : 8)
+        out := smtMaskAdd(out, gxt ? 32 : 16)
+    else
+        out := s15 ? smtMaskAdd(out, 1) : out
+        out := s30 ? smtMaskAdd(out, 2) : out
+        out := s90 ? smtMaskAdd(out, 4) : out
+        out := s1h ? smtMaskAdd(out, 8) : out
+        out := s4h ? smtMaskAdd(out, 16) : out
+        out := s6h ? smtMaskAdd(out, 32) : out
+    out := s1d ? smtMaskAdd(out, 64) : out
+    out := s1w ? smtMaskAdd(out, 128) : out
+    out := s1m ? smtMaskAdd(out, 256) : out
+    out := s3m ? smtMaskAdd(out, 512) : out
+    out := s12m ? smtMaskAdd(out, 1024) : out
+    out
+
+export smtEnabledMaskFull(bool autoMode, string sequence, bool s15, bool s30, bool s90, bool s1h, bool s4h, bool s6h, bool s7h, bool s12h, bool s1d, bool s1w, bool s1m, bool s3m, bool s12m) =>
+    int out = 0
+    if autoMode
+        bool gxt = sequence == "GXT Sequence"
+        out := smtMaskAdd(out, gxt ? 2 : 1)
+        out := smtMaskAdd(out, gxt ? 4 : 8)
+        out := smtMaskAdd(out, gxt ? 32 : 16)
+        out := smtMaskAdd(out, gxt ? 4096 : 2048)
+    else
+        out := s15 ? smtMaskAdd(out, 1) : out
+        out := s30 ? smtMaskAdd(out, 2) : out
+        out := s1h ? smtMaskAdd(out, 8) : out
+        out := s90 ? smtMaskAdd(out, 4) : out
+        out := s4h ? smtMaskAdd(out, 16) : out
+        out := s6h ? smtMaskAdd(out, 32) : out
+        out := s7h ? smtMaskAdd(out, 2048) : out
+        out := s12h ? smtMaskAdd(out, 4096) : out
+    out := s1d ? smtMaskAdd(out, 64) : out
+    out := s1w ? smtMaskAdd(out, 128) : out
+    out := s1m ? smtMaskAdd(out, 256) : out
+    out := s3m ? smtMaskAdd(out, 512) : out
+    out := s12m ? smtMaskAdd(out, 1024) : out
+    out
+
+export ssmtOwnerFromMask(int bit) =>
+    bit == 1 or bit == 8 or bit == 16 or bit == 2048 ? 1 : bit == 2 or bit == 4 or bit == 32 or bit == 4096 ? 2 : 0
+
+export ssmtOwnerMaskEnabled(int cycles, int owner, bool autoSmt, string sequence, int allowedMask, bool ssShow) =>
+    ssShow and ssmtOwnerActive(owner, autoSmt, sequence) and smtMaskIntersects(cycles, allowedMask)
+
+export smtMaskResetOnMarketGap(int bit) =>
+    bit == 1 or bit == 2 or bit == 4 or bit == 8 or bit == 16 or bit == 32 or bit == 2048 or bit == 4096
+
+
+export cycleRankFromToken(string token) =>
+    token == "12M" ? 13 : token == "3M" ? 12 : token == "1M" ? 11 : token == "1W" ? 10 : token == "1D" ? 9 : token == "12H" ? 8 : token == "7H" ? 7 : token == "6H" ? 6 : token == "4H" ? 5 : token == "90m" ? 4 : token == "1H" ? 3 : token == "30m" ? 2 : token == "15m" ? 1 : 0
+
+export pipeHasToken(string list, string token) =>
+    str.length(list) > 0 and str.length(token) > 0 and str.contains("|" + list + "|", "|" + token + "|")
+
+export cycleRankFromTokens(string tokens) =>
+    pipeHasToken(tokens, "12M") ? 13 : pipeHasToken(tokens, "3M") ? 12 : pipeHasToken(tokens, "1M") ? 11 : pipeHasToken(tokens, "1W") ? 10 : pipeHasToken(tokens, "1D") ? 9 : pipeHasToken(tokens, "12H") ? 8 : pipeHasToken(tokens, "7H") ? 7 : pipeHasToken(tokens, "6H") ? 6 : pipeHasToken(tokens, "4H") ? 5 : pipeHasToken(tokens, "90m") ? 4 : pipeHasToken(tokens, "1H") ? 3 : pipeHasToken(tokens, "30m") ? 2 : pipeHasToken(tokens, "15m") ? 1 : 0
+
+export highestCycleToken(string tokens) =>
+    pipeHasToken(tokens, "12M") ? "12M" : pipeHasToken(tokens, "3M") ? "3M" : pipeHasToken(tokens, "1M") ? "1M" : pipeHasToken(tokens, "1W") ? "1W" : pipeHasToken(tokens, "1D") ? "1D" : pipeHasToken(tokens, "12H") ? "12H" : pipeHasToken(tokens, "7H") ? "7H" : pipeHasToken(tokens, "6H") ? "6H" : pipeHasToken(tokens, "4H") ? "4H" : pipeHasToken(tokens, "90m") ? "90m" : pipeHasToken(tokens, "1H") ? "1H" : pipeHasToken(tokens, "30m") ? "30m" : pipeHasToken(tokens, "15m") ? "15m" : tokens
+
+export eventPriceTol(float y1, float y2, float mult, float mintick) =>
+    math.max(mintick * 4.0 * mult, math.abs((y1 + y2) * 0.5) * 0.00002 * mult)
+
+export rawMoveSign(float prev, float curr) =>
+    curr > prev ? 1 : curr < prev ? -1 : 0
+
+export ssmtDirectDiverges(float mainA, float mainB, float pairA, float pairB, bool inv, bool bear) =>
+    bear ? inv ? (((mainA >= mainB and pairA >= pairB) or (mainA <= mainB and pairA <= pairB)) and not (mainA == mainB and pairA == pairB)) : (((mainA >= mainB and pairA <= pairB) or (mainA <= mainB and pairA >= pairB)) and not (mainA == mainB and pairA == pairB)) : inv ? (((mainA <= mainB and pairA <= pairB) or (mainA >= mainB and pairA >= pairB)) and not (mainA == mainB and pairA == pairB)) : (((mainA <= mainB and pairA >= pairB) or (mainA >= mainB and pairA <= pairB)) and not (mainA == mainB and pairA == pairB))
+
+export eventStrength(int x1, float y1, int x2, float y2, int chartTfMs, float mintick) =>
+    math.max(1.0, math.abs(x2 - x1) / (chartTfMs * 1.0)) * 1000.0 + math.max(1.0, math.abs(y2 - y1) / mintick)
+
+export addToken(string list, string token) =>
+    string out = list
+    if str.length(token) > 0
+        if str.length(out) == 0
+            out := token
+        else if not pipeHasToken(out, token)
+            out += "|" + token
+    out
+
+removeToken(string list, string token) =>
+    string s = str.replace_all("|" + list + "|", "|" + token + "|", "|")
+    int n = str.length(s)
+    n > 2 ? str.substring(s, 1, n - 1) : ""
+
+export mergeCycleTokens(string base, string tokens) =>
+    string out = base
+    if str.length(tokens) > 0
+        out := pipeHasToken(tokens, "12M") ? addToken(out, "12M") : out
+        out := pipeHasToken(tokens, "3M") ? addToken(out, "3M") : out
+        out := pipeHasToken(tokens, "1M") ? addToken(out, "1M") : out
+        out := pipeHasToken(tokens, "1W") ? addToken(out, "1W") : out
+        out := pipeHasToken(tokens, "1D") ? addToken(out, "1D") : out
+        out := pipeHasToken(tokens, "6H") ? addToken(out, "6H") : out
+        out := pipeHasToken(tokens, "4H") ? addToken(out, "4H") : out
+        out := pipeHasToken(tokens, "1H") ? addToken(out, "1H") : out
+        out := pipeHasToken(tokens, "90m") ? addToken(out, "90m") : out
+        out := pipeHasToken(tokens, "30m") ? addToken(out, "30m") : out
+        out := pipeHasToken(tokens, "15m") ? addToken(out, "15m") : out
+    out
+
+export mergeAssetTokens(string base, string tokens, string pair1, string pair2) =>
+    string out = base
+    if str.length(tokens) > 0
+        bool added = false
+        if str.length(pair1) > 0 and pipeHasToken(tokens, pair1)
+            out := addToken(out, pair1)
+            added := true
+        if str.length(pair2) > 0 and pipeHasToken(tokens, pair2)
+            out := addToken(out, pair2)
+            added := true
+        if not added
+            out := addToken(out, tokens)
+    out
+
+addDisplay(string out, string list, string token, string displayText) =>
+    pipeHasToken(list, token) ? (str.length(out) == 0 ? displayText : out + " + " + displayText) : out
+
+export tokensToDisplay(string list) =>
+    string out = ""
+    if str.length(list) > 0
+        out := addDisplay(out, list, "12M", "12M")
+        out := addDisplay(out, list, "3M", "3M")
+        out := addDisplay(out, list, "1M", "1M")
+        out := addDisplay(out, list, "1W", "1W")
+        out := addDisplay(out, list, "1D", "1D")
+        out := addDisplay(out, list, "6H", "6H")
+        out := addDisplay(out, list, "4H", "4H")
+        out := addDisplay(out, list, "1H", "1H")
+        out := addDisplay(out, list, "90m", "90m")
+        out := addDisplay(out, list, "30m", "30m")
+        out := addDisplay(out, list, "15m", "15m")
+    out
+
+export smtLabelCycles(string cycles, bool hideLtf) =>
+    string out = cycles
+    if hideLtf
+        out := ""
+        out := pipeHasToken(cycles, "12M") ? addToken(out, "12M") : out
+        out := pipeHasToken(cycles, "3M") ? addToken(out, "3M") : out
+        out := pipeHasToken(cycles, "1M") ? addToken(out, "1M") : out
+        out := pipeHasToken(cycles, "1W") ? addToken(out, "1W") : out
+        out := pipeHasToken(cycles, "1D") ? addToken(out, "1D") : out
+        out := pipeHasToken(cycles, "6H") ? addToken(out, "6H") : out
+        out := pipeHasToken(cycles, "4H") ? addToken(out, "4H") : out
+        out := pipeHasToken(cycles, "1H") ? addToken(out, "1H") : out
+        out := pipeHasToken(cycles, "90m") ? addToken(out, "90m") : out
+    out
+
+export ltfSmtLabelHidden(string cycles, bool hideLtf) =>
+    hideLtf and str.length(smtLabelCycles(cycles, true)) == 0
+
+export eventLabel(string cycles, string assets, string pair1, string pair2) =>
+    string cy = tokensToDisplay(cycles)
+    string assetTxt = priorityAssetLabel(assets, pair1, pair2)
+    str.length(assetTxt) > 0 ? cy + " " + assetTxt : cy
+
+export sssmtLabel(string cycles, string assets, string pair1, string pair2) =>
+    string base = eventLabel(cycles, assets, pair1, pair2)
+    str.length(base) > 0 ? "SS " + base : "SS"
+
+export assetChain(string current, bool ok1, string sym1, bool ok2, string sym2) =>
+    string tail = ok1 ? bareTicker(sym1) : ""
+    tail := ok2 ? (str.length(tail) > 0 ? tail + " - " : "") + bareTicker(sym2) : tail
+    str.length(tail) > 0 ? current + " - " + tail : current
+
+export eventMidY(float y1, float y2) =>
+    math.round_to_mintick((y1 + y2) * 0.5)
+
+export newOwnerBetter(float newStrength, int newRank, float oldStrength, int oldRank) =>
+    newStrength > oldStrength or (math.abs(newStrength - oldStrength) <= 0.0001 and newRank > oldRank)
+
+export ssmtCase(int dir, float prev, float curr) =>
+    dir == 1 ? curr > prev ? 1 : curr < prev ? -1 : 0 : curr < prev ? 1 : curr > prev ? -1 : 0
+
+export pairSsmtCase(int side, int move) =>
+    side == 1 ? move : side == -1 ? -move : 0
+
+export moreExtremeA(int dir, float newY, float oldY, float tol) =>
+    dir == 1 ? newY > oldY + tol : newY < oldY - tol
+
+export moreExtremeB(int dir, float newY, float oldY, float tol) =>
+    dir == 1 ? newY > oldY + tol : newY < oldY - tol
+
+export barSpan(int x1, int x2) =>
+    math.abs(x2 - x1)
+
+export pivotMatch(int barA, float priceA, int barB, float priceB, float mintick) =>
+    not na(barA) and not na(barB) and not na(priceA) and not na(priceB) and barA == barB and math.abs(priceA - priceB) <= mintick * 0.5
+
+export absorbWindowFlags(int kb1, int kb2, int ob1, int ob2, int kx1, int kx2, int ox1, int ox2, float ky1, float ky2, float oy1, float oy2, int chartTfMs, float mintick) =>
+    int nl = math.min(kb1, kb2)
+    int nr = math.max(kb1, kb2)
+    int ol = math.min(ob1, ob2)
+    int orr = math.max(ob1, ob2)
+    bool validArgs = chartTfMs > 0 and mintick > 0 and not na(kx1) and not na(kx2) and not na(ox1) and not na(ox2) and not na(ky1) and not na(ky2) and not na(oy1) and not na(oy2)
+    bool sameA = not na(ob1) and not na(kb1) and ob1 == kb1
+    bool sameB = not na(ob2) and not na(kb2) and ob2 == kb2
+    bool strictlyInside = validArgs and not na(nl) and not na(nr) and not na(ol) and not na(orr) and ol > nl and orr < nr
+    bool neighborHandoff = validArgs and (not na(ob2) and not na(kb1) and ob2 == kb1 or not na(ob1) and not na(kb2) and ob1 == kb2)
+    [sameA, sameB, strictlyInside, neighborHandoff]
+
+export lineStyle(string styleText) =>
+    styleText == "----" or str.contains(styleText, "Dash") ? line.style_dashed : styleText == "...." or str.contains(styleText, "Dot") ? line.style_dotted : line.style_solid
+
+export newIdxLine(int x1, float y1, int x2, float y2, color clr, string st) =>
+    line.new(x1 = x1, y1 = y1, x2 = x2, y2 = y2, xloc = xloc.bar_index, color = clr, style = st, width = 1)
+
+export newIdxBox(int l, float t, int r, float b, color bc, color bg) =>
+    box.new(left = l, top = t, right = r, bottom = b, xloc = xloc.bar_index, border_color = bc, border_width = 1, bgcolor = bg)
+
+export newPrevEqLabel(int x, float y, string txt, color txtClr, string fontFam) =>
+    label.new(x = x, y = y, text = txt, xloc = xloc.bar_index, yloc = yloc.price, color = #FFFFFF00, style = label.style_none, textcolor = txtClr, size = size.tiny, textalign = text.align_center, text_font_family = fontFam)
+
+export newBoldLabel(int x, float y, string txt, string st, color txtClr, string sz, string fontFam) =>
+    label.new(x = x, y = y, text = txt, color = #FFFFFF00, style = st, textcolor = txtClr, size = sz, text_font_family = fontFam, text_formatting = text.format_bold)
+
+export newTinyIdxLabel(int x, float y, string txt, string st, color txtClr, string fontFam) =>
+    label.new(x = x, y = y, text = txt, xloc = xloc.bar_index, color = #FFFFFF00, style = st, textcolor = txtClr, size = size.tiny, text_font_family = fontFam)
+
+export newC123Label(int x, float y, string txt, bool bullSeq, color txtClr, string fontFam) =>
+    label.new(x = x, y = y, text = txt, color = #FFFFFF00, style = bullSeq ? label.style_label_up : label.style_label_down, textcolor = txtClr, size = size.tiny, text_font_family = fontFam, text_formatting = text.format_bold)
+
+export pairEffectiveSide(int side, bool inverted) =>
+    inverted ? -side : side
+
+export htfPairHigh(float pairHigh, float pairLow, bool inverted) =>
+    inverted ? -pairLow : pairHigh
+
+export htfPairLow(float pairHigh, float pairLow, bool inverted) =>
+    inverted ? -pairHigh : pairLow
+
+export corrDir(int d, bool inv, bool ok) =>
+    int out = ok and not na(d) ? d : 0
+    inv ? -out : out
+
+export pspDir(int mainDir, int pairDir) =>
+    mainDir != 0 and pairDir == -mainDir ? mainDir : 0
+
+export actualTf(string displayTf) =>
+    int n = str.length(displayTf)
+    string u = n > 0 ? str.substring(displayTf, n - 1, n) : ""
+    string v = n > 1 ? str.substring(displayTf, 0, n - 1) : ""
+    u == "m" ? v : u == "h" ? str.tostring(int(str.tonumber(v) * 60)) : displayTf
+
+export htfSeconds(string tf) =>
+    float n = str.tonumber(tf)
+    not na(n) ? int(n * 60) : tf == "D" ? 86400 : tf == "3D" ? 259200 : tf == "W" ? 604800 : tf == "M" ? 2592000 : tf == "3M" ? 7776000 : tf == "6M" ? 15552000 : tf == "12M" ? 31104000 : na
+
+export htfRuntimeBars(string tf, int count, int chartSec, int maxBars) =>
+    int sec = htfSeconds(tf)
+    int ratio = na(sec) or na(chartSec) or chartSec <= 0 ? maxBars : int(math.ceil(sec / chartSec))
+    math.min(maxBars, math.max(250, ratio * (count + 3) + 100))
+
+export runtimeOn(int barsBack, int maxCalcBars, int barIndex, int lastBarIndex) =>
+    int bars = math.min(math.max(0, barsBack), maxCalcBars)
+    barIndex >= math.max(0, lastBarIndex - bars)
+
+export autoSeqOk(string tf, bool needed, int chartSec, int htfMaxBars, int maxCalcBars, int barIndex, int lastBarIndex) =>
+    int sec = htfSeconds(tf)
+    needed and str.length(tf) > 0 and not na(sec) and chartSec < sec and runtimeOn(htfRuntimeBars(tf, 1, chartSec, htfMaxBars), maxCalcBars, barIndex, lastBarIndex)
+
+export htfRuntimeOn(string tf, int count, int chartSec, int htfMaxBars, int maxCalcBars, int barIndex, int lastBarIndex) =>
+    barIndex >= math.max(0, lastBarIndex - math.max(maxCalcBars, htfRuntimeBars(tf, count, chartSec, htfMaxBars)))
+
+export htfCandleShift(int candleIndex, int offset, int buffer, int width, int candlesAmount) =>
+    offset + (width + buffer) * (candlesAmount - candleIndex - 1)
+
+export htfCandleWidth(int selector) =>
+    selector <= 1 ? 2 : selector == 2 ? 4 : selector == 3 ? 6 : 8
+
+export htfWickX(int left, int width) =>
+    left + int(width / 2)
+
+export eventLabelTime(int x1, int x2, int b1, int b2, int barIndex) =>
+    int labelBar = int(math.floor((b1 + b2) * 0.5))
+    int labelOffset = barIndex - labelBar
+    bool canUseMidBarTime = not na(labelBar) and labelOffset >= 0 and labelOffset <= 5000
+    canUseMidBarTime ? time[labelOffset] : int(math.round(x1 + (x2 - x1) * 0.5))
+
+export htfLevelsIncludePane(string mode, int pane) =>
+    str.contains(mode, "12H") or str.contains(mode, "1D") or str.contains(mode, "1W") ? false : mode == "None" ? false : mode == "TF3" ? pane == 3 : mode == "TF3+TF2" ? (pane == 3 or pane == 2) : true
+
+export prevSourceHas(string mode, string source) =>
+    mode == source or str.contains(mode, source)
+
+export prevSourceMask(string mode) =>
+    (prevSourceHas(mode, "12H") ? 1 : 0) + (prevSourceHas(mode, "1D") ? 2 : 0) + (prevSourceHas(mode, "1W") ? 4 : 0)
+
+export maskHas(int mask, int bit) =>
+    mask % (bit * 2) >= bit
+
+export prevEqStartX(int openIdx, int closeIdx, float mid, int barIndex) =>
+    int midX = openIdx
+    int start = math.min(5000, math.max(0, barIndex - openIdx))
+    int stop = math.min(5000, math.max(0, barIndex - closeIdx))
+    if start >= stop
+        for off = stop to start
+            if bodyTouches(open[off], close[off], mid)
+                midX := barIndex - off
+                break
+    midX
+
+export prevSourceAnchorIdx(string labelTf, int barIndex, int chartSec) =>
+    int srcSec = labelTf == "12H" ? 43200 : labelTf == "1D" ? 86400 : 604800
+    int bars = chartSec > 0 ? math.max(1, int(math.ceil(srcSec / chartSec))) : 1
+    math.max(0, barIndex - bars)
+
+export prevEqText(string tf) =>
+    tf + " - EQ"
+
+export cisdRecentMinBar(int barIndex, int recentWindow) =>
+    math.max(0, barIndex - recentWindow)
+
+export cisdAbsBarToOff(int absBar, int cap, int barIndex, int recentWindow) =>
+    int tmp = not na(absBar) ? barIndex - absBar : na
+    not na(tmp) and tmp >= 0 and tmp <= cap and absBar >= cisdRecentMinBar(barIndex, recentWindow) ? tmp : na
+
+export cisdConfirmedIdx(int idx, bool confirmed) =>
+    idx > 0 or confirmed
+
+export cisdC2Invalidates(int dir, float ext, float lo, float hi) =>
+    dir == 1 ? lo < ext : dir == -1 ? hi > ext : false
+
+export cisdDispLevel(int dir, int confBar, int cap, int barIndex, int recentWindow) =>
+    int off = cisdAbsBarToOff(confBar, cap, barIndex, recentWindow)
+    not na(off) ? (dir == 1 ? high[off] : low[off]) : na
+
+export cisdDispSeen(int dir, int confBar, float lvl, int cap, int barIndex, int recentWindow, bool confirmed, int scanBars) =>
+    bool seen = false
+    if not na(confBar) and not na(lvl)
+        int right = math.min(barIndex, confBar + scanBars)
+        if confBar + 1 <= right
+            for absBar = confBar + 1 to right
+                int off = cisdAbsBarToOff(absBar, cap, barIndex, recentWindow)
+                if not na(off) and cisdConfirmedIdx(off, confirmed)
+                    seen := dir == 1 ? close[off] > lvl : close[off] < lvl
+                    if seen
+                        break
+    seen
+
+export cisdInvalidLive(int confT, int t) =>
+    not na(confT) and not na(t) and t > confT
+
+export cisdPriceMatch(float a, float b, float mintick) =>
+    not na(a) and not na(b) and math.abs(a - b) <= mintick * 0.5
+
+export cisdBodyInvAccum(float cur, int dir, float o, float c) =>
+    float v = dir == -1 ? math.max(o, c) : dir == 1 ? math.min(o, c) : na
+    na(cur) ? v : dir == -1 ? math.max(cur, v) : dir == 1 ? math.min(cur, v) : cur
+
+export cisdNextStopTime(int stopT, int anchorT, float lvl, int nowT, int prevT, float o, float c, bool confirmed) =>
+    int out = stopT
+    if not na(anchorT) and not na(stopT) and not na(lvl) and confirmed
+        bool firstAfterAnchor = not na(prevT) and prevT <= anchorT and nowT > anchorT
+        bool touchNow = nowT > anchorT and not firstAfterAnchor and bodyTouches(o, c, lvl)
+        if stopT >= nowT and touchNow and stopT != nowT
+            out := nowT
+    out
+
+export cisdFindStopTime(int anchorT, float lvl, int barMs, int touchSearchBars, int extendBars, int lookbackCap, int nowT, bool confirmed) =>
+    int stopT = na
+    int searchCapT = anchorT + barMs * touchSearchBars
+    int fallbackT = extendBars > 0 ? anchorT + barMs * extendBars : searchCapT
+    int estBarsSinceAnchor = barMs > 0 ? int(math.ceil(float(math.max(0, nowT - anchorT)) / barMs)) + 2 : lookbackCap
+    int maxLook = math.min(lookbackCap, math.max(0, estBarsSinceAnchor))
+    bool seenAfterAnchor = false
+    for i = maxLook to 0
+        if not na(time[i])
+            int t = int(time[i])
+            if t > searchCapT
+                break
+            if t > anchorT
+                bool firstAfterAnchor = not seenAfterAnchor
+                seenAfterAnchor := true
+                if cisdConfirmedIdx(i, confirmed) and bodyTouches(open[i], close[i], lvl)
+                    if not firstAfterAnchor
+                        stopT := t
+                        break
+    na(stopT) ? fallbackT : stopT
+
+export cisdPostConfirmInvalid(int dir, float inv, float ext, int confBar, int offsetCap, int barIndex, int recentWindow, bool confirmed) =>
+    bool bad = false
+    int start = not na(confBar) ? cisdAbsBarToOff(math.max(cisdRecentMinBar(barIndex, recentWindow), confBar + 1), offsetCap, barIndex, recentWindow) : na
+    if not na(start)
+        for k = 0 to start
+            int off = start - k
+            if cisdConfirmedIdx(off, confirmed)
+                bad := (not na(inv) and (dir == 1 ? close[off] < inv : dir == -1 ? close[off] > inv : false)) or (not na(ext) and cisdC2Invalidates(dir, ext, low[off], high[off]))
+                if bad
+                    break
+    bad
+
+export cisdFindLockedC2(int leftBar, int rightBar, int dir, float extreme, int offsetCap, int barIndex, int recentWindow, bool confirmed, float mintick) =>
+    int outBar = na
+    int outTime = na
+    float outExt = na
+    if not na(leftBar) and not na(rightBar) and not na(extreme)
+        int left = math.max(cisdRecentMinBar(barIndex, recentWindow), math.min(leftBar, rightBar))
+        int right = math.min(barIndex, math.max(leftBar, rightBar))
+        if left <= right
+            for absBar = left to right
+                int off = cisdAbsBarToOff(absBar, offsetCap, barIndex, recentWindow)
+                if not na(off) and cisdConfirmedIdx(off, confirmed)
+                    float c2Px = dir == 1 ? low[off] : high[off]
+                    if cisdPriceMatch(c2Px, extreme, mintick) and absBar > nz(outBar, -1)
+                        outBar := absBar
+                        outTime := int(time[off])
+                        outExt := c2Px
+    [outBar, outTime, outExt]
+
+export cisdFindConfirmAfterC2(int c2Bar, float lvl, int dir, int confirmMaxBars, int offsetCap, int barIndex, int recentWindow, bool confirmed) =>
+    int confBar = na
+    int confT = na
+    if not na(c2Bar) and not na(lvl)
+        int left = math.max(cisdRecentMinBar(barIndex, recentWindow), c2Bar)
+        int right = math.min(barIndex, c2Bar + confirmMaxBars)
+        if left <= right
+            for absBar = left to right
+                int off = cisdAbsBarToOff(absBar, offsetCap, barIndex, recentWindow)
+                if not na(off) and cisdConfirmedIdx(off, confirmed) and (dir == 1 ? close[off] > lvl : dir == -1 ? close[off] < lvl : false)
+                    confBar := absBar
+                    confT := int(time[off])
+                    break
+    [confBar, confT]
+
+export cisdC2ExtremeVeto(int dir, int c2Bar, float c2Ext, int htfC2Bar, int confBar, int offsetCap, int barIndex, int recentWindow, bool confirmed) =>
+    bool veto = false
+    if not na(c2Bar) and not na(c2Ext) and not na(confBar)
+        int c2DoneBar = na(htfC2Bar) ? c2Bar : math.max(c2Bar, htfC2Bar)
+        int left = math.max(cisdRecentMinBar(barIndex, recentWindow), c2DoneBar + 1)
+        int right = math.min(barIndex, confBar)
+        if left <= right
+            for absBar = left to right
+                int off = cisdAbsBarToOff(absBar, offsetCap, barIndex, recentWindow)
+                if not na(off) and cisdConfirmedIdx(off, confirmed)
+                    if cisdC2Invalidates(dir, c2Ext, low[off], high[off])
+                        veto := true
+                        break
+    veto
+
+export cisdPickCoreFromLockedC2(int c2Bar, int dir, int coreScanBackBars, int coreScanCap, int barIndex, int recentWindow, int maxCandlesInput) =>
+    float pickLvl = na
+    int pickT = na
+    float pickInvLvl = na
+    if not na(c2Bar)
+        int scanLeftBar = math.max(cisdRecentMinBar(barIndex, recentWindow), c2Bar - coreScanBackBars)
+        int offC2 = cisdAbsBarToOff(c2Bar, coreScanCap, barIndex, recentWindow)
+        int offLeft = cisdAbsBarToOff(scanLeftBar, coreScanCap, barIndex, recentWindow)
+        if not na(offC2) and not na(offLeft) and offLeft >= offC2
+            bool scanUpclose = dir == -1
+            int maxCandles = math.max(1, maxCandlesInput)
+            int maxK = math.min(offLeft - offC2, coreScanCap - offC2)
+            bool c2Upclose = close[offC2] > open[offC2]
+            bool c2Downclose = close[offC2] < open[offC2]
+            int startK = (scanUpclose ? c2Upclose : c2Downclose) ? 0 : 1
+            int cnt = 0
+            float lastLvl = na
+            int lastT = na
+            float setInvLvl = na
+            float nthLvl = na
+            int nthT = na
+            float nthInvLvl = na
+            bool started = false
+            if startK <= maxK
+                for k = 0 to coreScanCap
+                    if k > maxK
+                        break
+                    if k >= startK
+                        int idx = offC2 + k
+                        if idx > coreScanCap or na(time[idx])
+                            break
+                        bool up = close[idx] > open[idx]
+                        bool dn = close[idx] < open[idx]
+                        bool ok = scanUpclose ? up : dn
+                        bool opp = scanUpclose ? dn : up
+                        if ok
+                            started := true
+                            cnt += 1
+                            lastLvl := open[idx]
+                            lastT := int(time[idx])
+                            setInvLvl := cisdBodyInvAccum(setInvLvl, dir, open[idx], close[idx])
+                            if cnt == maxCandles
+                                nthLvl := lastLvl
+                                nthT := lastT
+                                nthInvLvl := setInvLvl
+                                break
+                        else if started and opp
+                            break
+            if cnt >= maxCandles and not na(nthLvl) and not na(nthInvLvl)
+                pickLvl := nthLvl
+                pickInvLvl := nthInvLvl
+                pickT := nthT
+            else if cnt > 0 and not na(lastLvl) and not na(setInvLvl)
+                pickLvl := lastLvl
+                pickInvLvl := setInvLvl
+                pickT := lastT
+    [pickLvl, pickT, pickInvLvl]
+
+export smtResetOnMarketGap(string token) =>
+    token == "15m" or token == "30m" or token == "90m" or token == "1H" or token == "4H" or token == "6H"
+
+export smtAllowedBySequence(string token, string sequence, bool autoSmt) =>
+    if not autoSmt
+        true
+    else
+        bool gxt = sequence == "GXT Sequence"
+        gxt ? (token == "30m" or token == "90m" or token == "6H") : (token == "15m" or token == "1H" or token == "4H")
+
+export sequenceOwner(string sequence) =>
+    sequence == "GXT Sequence" ? 2 : sequence == "Classic Sequence" ? 1 : 0
+
+export sequenceOwnerActive(int owner, string sequence) =>
+    owner == 0 or owner == sequenceOwner(sequence)
+
+export ssmtOwnerFromToken(string token) =>
+    token == "15m" or token == "1H" or token == "4H" ? 1 : token == "30m" or token == "90m" or token == "6H" ? 2 : 0
+
+export ssmtOwnerCompatible(int a, int b) =>
+    a == b or a == 0 or b == 0
+
+export ssmtOwnerMerge(int parentOwner, int childOwner) =>
+    parentOwner == childOwner ? childOwner : parentOwner == 0 ? childOwner : childOwner == 0 ? parentOwner : -1
+
+export smtCleanupPivotA(string mode) =>
+    mode == "Pivot A only" or mode == "Pivot A+B" or mode == "Inside Range and Pivot A" or mode == "Inside Range & Pivot A+B"
+
+export smtCleanupPivotB(string mode) =>
+    mode == "Pivot B only" or mode == "Pivot A+B" or mode == "Inside Range and Pivot B" or mode == "Inside Range & Pivot A+B"
+
+export smtCleanupInside(string mode) =>
+    mode == "Inside A-B Range Only" or mode == "Inside Range and Pivot A" or mode == "Inside Range and Pivot B" or mode == "Inside Range & Pivot A+B"
+
+export smtCleanupAbsorbOk(bool ownerOk, bool sameDir, bool sameCase, bool sameOrLowerCycle, bool neighborHandoff, bool pivotAOn, bool samePivotA, bool pivotBOn, bool samePivotB, bool insideOn, bool strictlyInside, int keeperRank, int oldRank) =>
+    bool sameOrHigherCycle = keeperRank >= oldRank
+    bool cycleOk = sameOrLowerCycle and sameOrHigherCycle
+    bool sameAb = samePivotA and samePivotB
+    bool pivotAOk = pivotAOn and samePivotA
+    bool pivotBOk = pivotBOn and samePivotB
+    bool insideOk = insideOn and strictlyInside
+    sameDir and sameCase and cycleOk and not neighborHandoff and (sameAb or ownerOk and (pivotAOk or pivotBOk or insideOk))
+
+export ssmtKeeperBetter(int candidateRank, int currentRank, int dir, float candidateY1, float currentY1, int candidateBx1, int candidateBx2, int currentBx1, int currentBx2, float mintick) =>
+    bool better = candidateRank > currentRank
+    if not better and candidateRank == currentRank
+        float pt = eventPriceTol(candidateY1, currentY1, 1.0, mintick)
+        better := moreExtremeA(dir, candidateY1, currentY1, pt) or math.abs(candidateY1 - currentY1) <= pt and barSpan(candidateBx1, candidateBx2) > barSpan(currentBx1, currentBx2)
+    better
+
+export tokensIntersect(string tokens, string allowed) =>
+    str.length(tokens) > 0 and str.length(allowed) > 0 and (pipeHasToken(tokens, "15m") and pipeHasToken(allowed, "15m") or pipeHasToken(tokens, "30m") and pipeHasToken(allowed, "30m") or pipeHasToken(tokens, "90m") and pipeHasToken(allowed, "90m") or pipeHasToken(tokens, "1H") and pipeHasToken(allowed, "1H") or pipeHasToken(tokens, "4H") and pipeHasToken(allowed, "4H") or pipeHasToken(tokens, "6H") and pipeHasToken(allowed, "6H") or pipeHasToken(tokens, "1D") and pipeHasToken(allowed, "1D") or pipeHasToken(tokens, "1W") and pipeHasToken(allowed, "1W") or pipeHasToken(tokens, "1M") and pipeHasToken(allowed, "1M") or pipeHasToken(tokens, "3M") and pipeHasToken(allowed, "3M") or pipeHasToken(tokens, "12M") and pipeHasToken(allowed, "12M"))
+
+export ssmtOwnerTokensEnabled(string cycles, int owner, bool autoSmt, string sequence, string allowedTokens, bool ssShow) =>
+    ssShow and ssmtOwnerActive(owner, autoSmt, sequence) and tokensIntersect(cycles, allowedTokens)
+
+export filterTokens(string tokens, string allowed) =>
+    string out = ""
+    if str.length(tokens) > 0 and str.length(allowed) > 0
+        out := pipeHasToken(tokens, "12M") and pipeHasToken(allowed, "12M") ? addToken(out, "12M") : out
+        out := pipeHasToken(tokens, "3M") and pipeHasToken(allowed, "3M") ? addToken(out, "3M") : out
+        out := pipeHasToken(tokens, "1M") and pipeHasToken(allowed, "1M") ? addToken(out, "1M") : out
+        out := pipeHasToken(tokens, "1W") and pipeHasToken(allowed, "1W") ? addToken(out, "1W") : out
+        out := pipeHasToken(tokens, "1D") and pipeHasToken(allowed, "1D") ? addToken(out, "1D") : out
+        out := pipeHasToken(tokens, "6H") and pipeHasToken(allowed, "6H") ? addToken(out, "6H") : out
+        out := pipeHasToken(tokens, "4H") and pipeHasToken(allowed, "4H") ? addToken(out, "4H") : out
+        out := pipeHasToken(tokens, "1H") and pipeHasToken(allowed, "1H") ? addToken(out, "1H") : out
+        out := pipeHasToken(tokens, "90m") and pipeHasToken(allowed, "90m") ? addToken(out, "90m") : out
+        out := pipeHasToken(tokens, "30m") and pipeHasToken(allowed, "30m") ? addToken(out, "30m") : out
+        out := pipeHasToken(tokens, "15m") and pipeHasToken(allowed, "15m") ? addToken(out, "15m") : out
+    out
+
+export smtDisplayTokensForChart(string tokens, int chartSec) =>
+    string out = tokens
+    out := chartSec >= 300 ? removeToken(removeToken(out, "15m"), "30m") : out
+    out := chartSec >= 900 ? removeToken(removeToken(out, "1H"), "90m") : out
+    out := chartSec >= 3600 ? removeToken(removeToken(out, "4H"), "6H") : out
+    out
+
+export smtAdjacentDuplicateRanks(int a, int b) =>
+    int hi = math.max(a, b)
+    math.abs(a - b) == 1 and (hi == 2 or hi == 4 or hi == 6)
+
+export smtEnabledTokens(bool autoMode, string sequence, bool s15, bool s30, bool s90, bool s1h, bool s4h, bool s6h, bool s1d, bool s1w, bool s1m, bool s3m, bool s12m) =>
+    string out = ""
+    if autoMode
+        bool gxt = sequence == "GXT Sequence"
+        out := gxt ? addToken(out, "30m") : addToken(out, "15m")
+        out := gxt ? addToken(out, "90m") : addToken(out, "1H")
+        out := gxt ? addToken(out, "6H") : addToken(out, "4H")
+    else
+        out := s15 ? addToken(out, "15m") : out
+        out := s30 ? addToken(out, "30m") : out
+        out := s90 ? addToken(out, "90m") : out
+        out := s1h ? addToken(out, "1H") : out
+        out := s4h ? addToken(out, "4H") : out
+        out := s6h ? addToken(out, "6H") : out
+    out := s1d ? addToken(out, "1D") : out
+    out := s1w ? addToken(out, "1W") : out
+    out := s1m ? addToken(out, "1M") : out
+    out := s3m ? addToken(out, "3M") : out
+    out := s12m ? addToken(out, "12M") : out
+    out
+
+export htfAutoTf(int bucket, int pane, string sequence) =>
+    bool gxt = sequence == "GXT Sequence"
+    switch bucket
+        0 => pane == 1 ? "5" : pane == 2 ? (gxt ? "30" : "15") : (gxt ? "90" : "60")
+        1 => pane == 1 ? (gxt ? "30" : "15") : pane == 2 ? (gxt ? "90" : "60") : (gxt ? "360" : "240")
+        2 => pane == 1 ? (gxt ? "90" : "60") : pane == 2 ? (gxt ? "360" : "240") : "D"
+        3 => pane == 1 ? (gxt ? "360" : "240") : pane == 2 ? "D" : "W"
+        4 => pane == 1 ? (gxt ? "720" : "D") : pane == 2 ? (gxt ? "3D" : "W") : (gxt ? "W" : "M")
+        5 => pane == 1 ? (gxt ? "3D" : "W") : pane == 2 ? (gxt ? "W" : "M") : (gxt ? "M" : "3M")
+        6 => pane == 1 ? "M" : pane == 2 ? "3M" : "12M"
+        7 => pane == 1 ? "3M" : pane == 2 ? "12M" : ""
+        => pane == 1 ? "12M" : ""
+
+export autoSeqCompareSlots(int bucket) =>
+    bucket == 0 ? 2 : bucket == 1 ? 3 : bucket == 2 ? 2 : bucket == 3 ? 1 : 0
+
+export autoSeqComparePane(int bucket, int slot) =>
+    bucket == 0 ? (slot == 1 ? 3 : slot == 2 ? 2 : 0) : bucket == 1 ? (slot == 1 ? 3 : slot == 2 ? 2 : slot == 3 ? 1 : 0) : bucket == 2 ? (slot == 1 ? 2 : slot == 2 ? 1 : 0) : bucket == 3 ? (slot == 1 ? 1 : 0) : 0
+
+export autoSeqCompareTf(int bucket, bool gxt, int slot) =>
+    if bucket == 0
+        slot == 1 ? (gxt ? "90" : "60") : slot == 2 ? (gxt ? "30" : "15") : ""
+    else if bucket == 1
+        slot == 1 ? (gxt ? "360" : "240") : slot == 2 ? (gxt ? "90" : "60") : slot == 3 ? (gxt ? "30" : "15") : ""
+    else if bucket == 2
+        slot == 1 ? (gxt ? "360" : "240") : slot == 2 ? (gxt ? "90" : "60") : ""
+    else if bucket == 3
+        slot == 1 ? (gxt ? "360" : "240") : ""
+    else
+        ""
+
+export htfAutoCount(int bucket, int pane) =>
+    bucket <= 1 ? (pane == 1 ? 9 : pane == 2 ? 6 : 3) : bucket <= 6 ? (pane == 1 ? 6 : pane == 2 ? 4 : 2) : bucket == 7 ? (pane == 1 ? 6 : pane == 2 ? 4 : 0) : (pane == 1 ? 6 : 0)
+
+export htfAutoBucket(int sec, int s3, int s15, int s60, int s240, int sd, int sw, int sm, int s3m) =>
+    na(sec) ? 0 : sec < s3 ? 0 : sec < s15 ? 1 : sec < s60 ? 2 : sec < s240 ? 3 : sec < sd ? 4 : sec < sw ? 5 : sec < sm ? 6 : sec < s3m ? 7 : 8
+
+seqExactPick(string gxtSeq, string classicSeq, int gxtDir, int classicDir) =>
+    string seq = ""
+    if gxtDir != 0 and classicDir == 0
+        seq := gxtSeq
+    else if classicDir != 0 and gxtDir == 0
+        seq := classicSeq
+    seq
+
+export sameDirScore(int d1, int d2, int d3) =>
+    int score = 0
+    score += d1 != 0 and d2 != 0 and d1 == d2 ? 1 : 0
+    score += d2 != 0 and d3 != 0 and d2 == d3 ? 1 : 0
+    score += d1 != 0 and d2 != 0 and d3 != 0 and d1 == d2 and d2 == d3 ? 1 : 0
+    score
+
+export autoSequencePick(int bucket, int c1, int c2, int c3, int g1, int g2, int g3) =>
+    string classicSeq = "Classic Sequence"
+    string gxtSeq = "GXT Sequence"
+    string seq = ""
+    int pane = 0
+    int cs = 0
+    int gs = 0
+    int slots = autoSeqCompareSlots(bucket)
+    int cc1 = slots >= 1 ? c1 : 0
+    int cc2 = slots >= 2 ? c2 : 0
+    int cc3 = slots >= 3 ? c3 : 0
+    int gg1 = slots >= 1 ? g1 : 0
+    int gg2 = slots >= 2 ? g2 : 0
+    int gg3 = slots >= 3 ? g3 : 0
+    bool any = cc1 != 0 or cc2 != 0 or cc3 != 0 or gg1 != 0 or gg2 != 0 or gg3 != 0
+    if slots >= 1
+        seq := seqExactPick(gxtSeq, classicSeq, gg1, cc1)
+        pane := str.length(seq) > 0 ? 1 : pane
+    if str.length(seq) == 0 and slots >= 2
+        seq := seqExactPick(gxtSeq, classicSeq, gg2, cc2)
+        pane := str.length(seq) > 0 ? 2 : pane
+    if str.length(seq) == 0 and slots >= 3
+        seq := seqExactPick(gxtSeq, classicSeq, gg3, cc3)
+        pane := str.length(seq) > 0 ? 3 : pane
+    if str.length(seq) == 0
+        cs := sameDirScore(cc1, cc2, cc3)
+        gs := sameDirScore(gg1, gg2, gg3)
+        seq := any and gs >= cs ? gxtSeq : classicSeq
+        pane := slots > 0 ? 1 : 0
+    [seq, pane]
+
+export autoSequencePaneNeeded(int bucket, int pane) =>
+    pane > 0 and pane <= autoSeqCompareSlots(bucket)
+
+export autoSequenceSig(int bucket, int ct1, int ct2, int ct3, int gt1, int gt2, int gt3, int cd1, int cd2, int cd3, int gd1, int gd2, int gd3) =>
+    bucket * 1009 + nz(ct1, 0) * 3 + nz(ct2, 0) * 5 + nz(ct3, 0) * 7 + nz(gt1, 0) * 11 + nz(gt2, 0) * 13 + nz(gt3, 0) * 17 + cd1 * 19 + cd2 * 23 + cd3 * 29 + gd1 * 31 + gd2 * 37 + gd3 * 41
+
+export autoSequencePickTf(int pane, string sequence, string c1, string c2, string c3, string g1, string g2, string g3) =>
+    bool gxt = sequence == "GXT Sequence"
+    pane == 1 ? (gxt ? g1 : c1) : pane == 2 ? (gxt ? g2 : c2) : pane == 3 ? (gxt ? g3 : c3) : ""
+
+export biasPickDir(string source, int d1, int d2, int d3) =>
+    source == "TF1" ? d1 : source == "TF3" ? d3 : source == "TF2 + TF3 Fallback" ? (d2 != 0 ? d2 : d3) : source == "TF2 + TF1 Fallback" ? (d2 != 0 ? d2 : d1) : d2
+
+export biasPickPane(string source, int d1, int d2, int d3) =>
+    source == "TF1" ? (d1 != 0 ? 1 : 0) : source == "TF3" ? (d3 != 0 ? 3 : 0) : source == "TF2 + TF3 Fallback" ? (d2 != 0 ? 2 : d3 != 0 ? 3 : 0) : source == "TF2 + TF1 Fallback" ? (d2 != 0 ? 2 : d1 != 0 ? 1 : 0) : d2 != 0 ? 2 : 0
+
+export biasOppSweep(bool enabled, int srcDir, int sweepDir, int sweepX) =>
+    enabled and srcDir != 0 and sweepDir == -srcDir and not na(sweepX)
+
+export biasBlockClear(int blockSweepX, int srcDir, int sweepDir, int sweepX) =>
+    not na(blockSweepX) and (sweepDir != -srcDir or na(sweepX))
+
+export biasConfirmOk(bool enabled, int srcDir, int c2Dir, int sweepDir) =>
+    enabled and srcDir != 0 and (c2Dir == srcDir or sweepDir == srcDir)
+
+export biasAccept(bool enabled, int srcDir, bool confirmOk, bool c4Closed, int blockSweepX) =>
+    enabled and srcDir != 0 and confirmOk and not c4Closed and na(blockSweepX)
+
+export biasSourcePane(bool accepted, string source) =>
+    accepted ? (source == "TF1" ? 1 : 2) : 0
+
+export biasCtx(bool sourceTf1, int d1, int x1, bool c4_1, int d2, int x2, bool c4_2, int d3, int sw2, int swx2, int sw3, int swx3) =>
+    [sourceTf1 ? d1 : d2, sourceTf1 ? x1 : x2, sourceTf1 ? d2 : d3, sourceTf1 ? sw2 : sw3, sourceTf1 ? swx2 : swx3, sourceTf1 ? c4_1 : c4_2]
+
+export biasSourceX(bool enabled, int pane, int x1, int x2) =>
+    enabled ? (pane == 1 ? x1 : pane == 2 ? x2 : na) : na
+
+export biasResolveFinal(bool enabled, string source, int blockSrcX, int blockSweepX, int d1, int x1, bool c4_1, int d2, int x2, bool c4_2, int d3, int sw2, int swx2, int sw3, int swx3) =>
+    [srcDir, srcX, confirmC2Dir, confirmSweepDir, confirmSweepX, srcC4Closed] = biasCtx(source == "TF1", d1, x1, c4_1, d2, x2, c4_2, d3, sw2, swx2, sw3, swx3)
+    int nextBlockSrcX = blockSrcX
+    int nextBlockSweepX = blockSweepX
+    if enabled and srcX != blockSrcX
+        nextBlockSrcX := srcX
+        nextBlockSweepX := na
+    if biasOppSweep(enabled, srcDir, confirmSweepDir, confirmSweepX)
+        nextBlockSweepX := confirmSweepX
+    else if biasBlockClear(nextBlockSweepX, srcDir, confirmSweepDir, confirmSweepX)
+        nextBlockSweepX := na
+    bool accepted = biasAccept(enabled, srcDir, biasConfirmOk(enabled, srcDir, confirmC2Dir, confirmSweepDir), srcC4Closed, nextBlockSweepX)
+    int pane = biasSourcePane(accepted, source)
+    [accepted ? srcDir : 0, pane, biasSourceX(enabled, pane, x1, x2), nextBlockSrcX, nextBlockSweepX]
+
+export htfLabel(string tf) =>
+    float n = str.tonumber(tf)
+    if not na(n)
+        int m = int(n)
+        m < 60 ? str.tostring(m) + "m" : m % 60 == 0 ? str.tostring(int(m / 60)) + "H" : str.tostring(m) + "m"
+    else
+        tf == "D" or tf == "1D" ? "1D" : tf == "W" or tf == "1W" ? "1W" : tf == "M" or tf == "1M" ? "1M" : tf == "12M" ? "1Y" : tf
+
+export htfPairText(string chartTf, string seqTf) =>
+    htfLabel(chartTf) + " → " + htfLabel(seqTf) + " "
+
+export htfSourceLabel(string tf, bool src) =>
+    htfLabel(tf) + (src ? " ●" : "")
+
+export labelPad(float top, float bottom, float mintick) =>
+    not na(top) and not na(bottom) ? math.max(math.abs(top - bottom) * 0.06, mintick * 12.0) : mintick * 12.0
+
+export c123LabelY(float h, float l, bool bull, float mintick) =>
+    float off = math.max(math.abs(h - l) * 0.012, mintick * 3.0)
+    bull ? l - off : h + off
+
+export c2Eq(float h, float l, float o, float c, bool bull) =>
+    bull ? math.avg(l, math.min(o, c)) : math.avg(h, math.max(o, c))
+
+export candleEq(float h, float l) =>
+    math.avg(h, l)
+
+export isDailyTf(string tf) =>
+    tf == "D" or tf == "1D"
+
+export remTime(int t, int now) =>
+    int s = na(t) ? na : int(math.max(0, (t - now) / 1000))
+    if na(s)
+        ""
+    else
+        int d = int(math.floor(s / 86400))
+        int h = int(math.floor((s - d * 86400) / 3600))
+        int m = int(math.floor((s - d * 86400 - h * 3600) / 60))
+        int r = s - d * 86400 - h * 3600 - m * 60
+        string out = str.tostring(r, "00")
+        if m > 0 or h > 0 or d > 0
+            out := str.tostring(m, "00") + ":" + out
+        if h > 0 or d > 0
+            out := str.tostring(h, "00") + ":" + out
+        if d > 0
+            out := str.tostring(d) + "D " + out
+        "(" + out + ")"
+
+export dash(int n) =>
+    str.substring(DASH, 0, math.min(n, 40))
+
+export fieldDash(string header, string value) =>
+    dash(math.max(str.length(header), str.length(value)))
+
+statusCell(table tbl, int c, int r, string txt, color clr, string fontFam) =>
+    table.cell(tbl, c, r, txt, text_color = clr, text_halign = text.align_center, text_size = size.small, bgcolor = #FFFFFF00, text_font_family = fontFam)
+    0
+
+statusCellLeft(table tbl, int c, int r, string txt, color clr, string fontFam) =>
+    table.cell(tbl, c, r, txt, text_color = clr, text_halign = text.align_left, text_size = size.small, bgcolor = #FFFFFF00, text_font_family = fontFam)
+    0
+
+statusPos(string pos) =>
+    pos == "Top Center" ? position.top_center : pos == "Bottom Right" ? position.bottom_right : pos == "Top Right" ? position.top_right : position.bottom_center
+
+export renderStatusTable(table tbl, string pos, string fontFam, bool modelShow, bool biasShow, bool autoShow, bool assetsShow, string chartTf, string seqTf, int biasDir, bool autoMode, bool autoSeq, bool autoSmt, bool offMode, string current, bool ok1, string sym1, bool ok2, string sym2, color bullClr, color bearClr, color neutralClr, color hlClr, color textClr) =>
+    table.set_position(tbl, statusPos(pos))
+    table.clear(tbl, 0, 0, 3, 4)
+    color stateClr = biasColor(biasDir, bullClr, bearClr, neutralClr)
+    color biasClr = offMode ? textClr : stateClr
+    string htf = htfPairText(chartTf, seqTf)
+    string auto = autoShow ? autoText(autoMode, autoSeq, autoSmt) : ""
+    string bias = biasText(biasDir, offMode)
+    string assets = assetChain(bareTicker(current), ok1, sym1, ok2, sym2)
+    int spacerRow = pos == "Top Center" ? 0 : pos == "Bottom Center" ? 4 : na
+    if not na(spacerRow)
+        statusCell(tbl, 1, spacerRow, " ", #FFFFFF00, fontFam)
+    if modelShow
+        statusCell(tbl, 0, 1, "MODEL", textClr, fontFam)
+        statusCell(tbl, 0, 2, fieldDash("MODEL", htf), textClr, fontFam)
+        statusCell(tbl, 0, 3, htf, hlClr, fontFam)
+    if biasShow
+        statusCell(tbl, 1, 1, "BIAS", textClr, fontFam)
+        statusCell(tbl, 1, 2, fieldDash("BIAS", bias), biasClr, fontFam)
+        statusCell(tbl, 1, 3, bias, biasClr, fontFam)
+    if autoShow
+        statusCell(tbl, 2, 1, "AUTO", textClr, fontFam)
+        statusCell(tbl, 2, 2, fieldDash("AUTO", auto), textClr, fontFam)
+        statusCell(tbl, 2, 3, auto, textClr, fontFam)
+    if assetsShow
+        int assetsCol = autoShow ? 3 : 2
+        statusCell(tbl, assetsCol, 1, "ASSETS", textClr, fontFam)
+        statusCell(tbl, assetsCol, 2, fieldDash("ASSETS", assets), textClr, fontFam)
+        statusCell(tbl, assetsCol, 3, assets, textClr, fontFam)
+    0
+
+
+// Profiler presentation and C3 closure helpers (publish before updating consumers).
+// Equality does not reclaim a failed sweep. Confirmation only comes from a closed source candle.
+export htfClosureDecision(bool highSide, float level, float sourceClose, bool sourceClosed) =>
+    bool accepted = not na(level) and not na(sourceClose) and (highSide ? sourceClose < level : sourceClose > level)
+    [accepted, sourceClosed and accepted, sourceClosed and not accepted]
+
+// Latest BODY intersection in the completed source interval; no wick or fabricated fallback.
+export keyLevelBodyOffset(float level, int sourceOpen, int sourceClose, int scanBars) =>
+    int found = na
+    int limit = math.min(math.min(scanBars, bar_index), 5000)
+    if not na(level) and limit >= 1
+        for offset = 1 to limit
+            if time[offset] >= sourceOpen and time_close[offset] <= sourceClose and math.min(open[offset], close[offset]) <= level and math.max(open[offset], close[offset]) >= level
+                found := offset
+                break
+    found
+
+export smtStackedLabel(string timeframeLabel, string assetLabel) =>
+    timeframeLabel + "\n" + assetLabel
+
+export smtLabelPrice(int direction, float priceA, float priceB, float tickSize) =>
+    float midpoint = math.avg(priceA, priceB)
+    float clearance = math.max(math.abs(priceA - priceB) * 0.10, tickSize * 8.0)
+    math.round((direction == 1 ? midpoint - clearance : midpoint + clearance) / tickSize) * tickSize
+
+// Composite translucent pane paint against the chart, not against an underlying FVG.
+// Keeps the same tint without another box/underlay per candle.
+export paneBodyPaint(color foreground, color background) =>
+    float alpha = 1.0 - color.t(foreground) / 100.0
+    color.t(foreground) == 0 ? foreground : color.rgb(int(math.round(color.r(foreground) * alpha + color.r(background) * (1.0 - alpha))), int(math.round(color.g(foreground) * alpha + color.g(background) * (1.0 - alpha))), int(math.round(color.b(foreground) * alpha + color.b(background) * (1.0 - alpha))))
+
+// Direction-normalized HTF filter measurement. Closed candles remain fixed; live OHLC rolls back normally.
+export htfFilterLevel(float candleHigh, float candleLow, bool bullish, float fraction) =>
+    bullish ? candleLow + (candleHigh - candleLow) * fraction : candleHigh - (candleHigh - candleLow) * fraction
+
+// One measurement owns its line, optional zone and caption in the host's existing last-bar bins.
+export drawHtfFilter(array<line> lines, array<box> boxes, array<label> labels, int left, int right, float level, float opening, color paint, string lineStyle, string caption, bool showZone, bool showLabel) =>
+    if not na(level) and line.all.size() < 490
+        if showZone and level != opening and box.all.size() < 490
+            boxes.push(box.new(left=left, top=math.max(level, opening), right=right, bottom=math.min(level, opening), xloc=xloc.bar_index, border_color=#FFFFFF00, bgcolor=color.new(paint, 90)))
+        lines.push(line.new(x1=left, y1=level, x2=right, y2=level, xloc=xloc.bar_index, color=paint, style=lineStyle, width=1))
+        if showLabel and label.all.size() < 490
+            labels.push(label.new(x=right + 1, y=level, text=caption, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=#FFFFFF00, textcolor=paint, size=size.tiny))
+    0

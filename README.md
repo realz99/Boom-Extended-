@@ -7,6 +7,10 @@ Based on Boom° v3 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence a
 
 **Script:** `Boom B33.pine` (Pine v6) · TradingView title **Boom° B33#** · build b25 · 98,349 / 100,256 compiled tokens
 
+## Other Pine v6 platforms (e.g. tradeuniv.com)
+
+`Boom B33 standalone.pine` is the same build with both libraries pasted in (no `import` lines): `Gregorius_XV/GXVAssetCorrelationUtils/1` as `AC_*` and `Gregorius_XV/GXVUtils/12` as `QTU_*`. Paste it as one indicator. The library sources are in `libs/` (MPL 2.0; GXVAssetCorrelationUtils © fstarcapital, fork by Gregorius_XV; GXVUtils by Gregorius_XV).
+
 ## Build b25 — rebased on Boom° v3
 
 Athena's update, all in: 1H model lane A entry is a 3m CISD (was 5m); SMT fill = a 15m / 1H / 4H / D POI FVG on the same candles in the chart and pair 1 (e.g. MNQ vs MES), untouched by both, touched by exactly one C2 (same result on 3m and 5m); 4H model POI adds 15m; the SMT-Fill library is removed. Kept: our fix for v3's POI zone builder (`na(cT)`: new zones never registered), and the POI row shows zone + SMT fill together (`15m BISI+F`).

@@ -1,0 +1,1491 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © fstarcapital
+// Current Working Upgrade Candidate: V16
+//@version=6
+library("GXVAssetCorrelationUtils", overlay = true)
+
+// - - - - - - - - -
+// Asset Correlation Library
+// Automatic detection of correlated assets for multi-asset analysis (SMT, divergences, etc.)
+// Supports: Futures (indices, metals, energy, forex, treasury), CFD, Crypto
+// - - - - - - - - -
+//
+// QUICK START
+// -----------
+//
+//   // 1. Resolve correlated assets (auto-detects from chart)
+//   AC.AssetConfig config = AC.resolveCurrentChart()
+//
+//   // 2. Access resolved tickers and flags
+//   string secondary = config.secondary   // e.g. "COMEX:SI1!" on a Gold chart
+//   string tertiary  = config.tertiary    // e.g. "COMEX:HG1!"
+//   bool   inv2      = config.invertSecondary
+//   bool   inv3      = config.invertTertiary
+//   bool   detected  = config.detected    // true if chart asset was recognized
+//
+//   // 3. GXT Mode (remaps metals to currency-cross triads, indices to the NQ/ES/YM triad)
+//   AC.AssetConfig gxtConfig = AC.resolveCurrentChart(true)
+//   // On Gold: secondary = "FOREXCOM:XAUEUR", tertiary = "FOREXCOM:XAUGBP"
+//   // On Silver: secondary = "OANDA:XAGEUR", tertiary = "OANDA:XAGGBP"
+//   // On YM: secondary = "CME_MINI:ES1!", tertiary = "CME_MINI:NQ1!"  (RTY excluded)
+//   // On Copper, Russell or anything else: identical to resolveCurrentChart(false)
+//
+// SUPPORTED ASSET CLASSES
+// ----------------------
+//   Futures:  Indices (NQ/ES/YM/RTY), Metals (GC/SI/HG), Forex (6E/6B/6C),
+//             Energy (CL/RB/HO), Treasury (ZB/ZF/ZN), Crypto (BTC/ETH)
+//             + all micro variants (MNQ, MGC, M6E, MCL, MBT, etc.)
+//   CFD:      Forex (EUR/GBP/DXY/AUD/NZD/JPY/CHF/CAD), Energy (USOIL/UKOIL), Metals (XAU/XAG/Copper),
+//             Metal Crosses (XAUEUR/XAUGBP/XAGEUR/XAGGBP),
+//             Indices (US100/NAS100/NDX/USTEC, US500/SP500/SPX500, US30/DJ30), EU Stocks (GER40/EU50)
+//   Crypto:   BTC, ETH, SOL, XRP, DOGE, ADA, BNB, TAO, ZEC
+//
+//   For the exact result of every mode on every symbol, read the
+//   AUTO MODE MATRIX. It is above the resolveAssets() declaration.
+//
+// - - - - - - - - -
+
+// - - - - - - - - -
+// Types
+// - - - - - - - - -
+// AssetPairing  — internal pairing structure used by detector functions.
+// AssetConfig   — consumer-facing result. Use this in your indicator.
+// 
+// @type Core asset pairing structure for triad/dyad configurations
+// @field primary The primary (chart) asset ticker ID
+// @field secondary The secondary correlated asset ticker ID
+// @field tertiary The tertiary correlated asset ticker ID (empty for dyad)
+// @field invertSecondary Whether secondary asset should be inverted for divergence calc
+// @field invertTertiary Whether tertiary asset should be inverted for divergence calc
+export type AssetPairing
+    string primary        = ""
+    string secondary      = ""
+    string tertiary       = ""
+    string quaternary     = ""
+    bool   invertSecondary = false
+    bool   invertTertiary  = false
+    bool   invertQuaternary = false
+
+// @type Full asset resolution result with mode detection and computed values
+// @field detected Whether auto-detection succeeded
+// @field isDyadMode True if exactly one correlated asset was resolved
+// @field isTriadMode True if exactly two correlated assets were resolved
+// @field isTetradMode True if exactly three correlated assets were resolved
+// @field primary The resolved primary asset ticker ID
+// @field secondary The resolved secondary asset ticker ID  
+// @field tertiary The resolved tertiary asset ticker ID (empty for dyad)
+// @field invertSecondary Computed inversion flag for secondary asset
+// @field invertTertiary Computed inversion flag for tertiary asset
+// @field assetCategory String describing the detected asset category
+export type AssetConfig
+    bool   detected        = false
+    bool   isDyadMode      = false
+    bool   isTriadMode     = true
+    bool   isTetradMode    = false
+    bool   isQuadMode      = false
+    string primary         = ""
+    string secondary       = ""
+    string tertiary        = ""
+    string quaternary      = ""
+    bool   invertSecondary = false
+    bool   invertTertiary  = false
+    bool   invertQuaternary = false
+    string assetCategory   = "unknown"
+    string correlationMode = "Classic"
+    string correlationType = "Triad"
+
+// - - - - - - - - -
+// Preserved QT Feed / Alias Helpers
+// - - - - - - - - -
+// @function Validate a resolved or manually selected pair against the index feed policy.
+// @param assetType Chart asset type.
+// @param assetCategory Category returned by this library's resolver.
+// @param chartId Full chart ticker ID, including its provider.
+// @param candidateId Full correlated ticker ID. No provider substitution is performed.
+// @returns True when the pair satisfies provider policy. This does not check feed availability.
+export indexProviderAllowed(string assetType, string assetCategory, string chartId, string candidateId) =>
+    bool indexCategory = assetCategory == "index_cfd" or assetCategory == "eu_stocks" or (assetType == "index" and (assetCategory == "fallback" or assetCategory == "unknown"))
+    not indexCategory or (candidateId != "" and str.upper(syminfo.prefix(candidateId)) == str.upper(syminfo.prefix(chartId)))
+
+// One policy owner for all automatic resolver entry points. Keep category identity
+// even if the provider is unsupported; never promote/relabel another pair or use
+// a foreign fallback. FX indices, futures and other CFD categories are unchanged.
+f_apply_index_provider_policy(AssetConfig config, string assetType, string tickerId) =>
+    bool indexCategory = config.assetCategory == "index_cfd" or config.assetCategory == "eu_stocks" or (assetType == "index" and (config.assetCategory == "fallback" or config.assetCategory == "unknown"))
+    if indexCategory
+        if not indexProviderAllowed(assetType, config.assetCategory, tickerId, config.secondary)
+            config.secondary := ""
+            config.invertSecondary := false
+        if not indexProviderAllowed(assetType, config.assetCategory, tickerId, config.tertiary)
+            config.tertiary := ""
+            config.invertTertiary := false
+        if not indexProviderAllowed(assetType, config.assetCategory, tickerId, config.quaternary)
+            config.quaternary := ""
+            config.invertQuaternary := false
+        int count = (config.secondary != "" ? 1 : 0) + (config.tertiary != "" ? 1 : 0) + (config.quaternary != "" ? 1 : 0)
+        config.detected := config.detected and count > 0
+        config.isDyadMode := config.detected and count == 1
+        config.isTriadMode := config.detected and count == 2
+        config.isTetradMode := config.detected and count == 3
+        config.isQuadMode := config.isTetradMode
+        config.correlationType := count == 3 ? "Tetrad" : count == 2 ? "Triad" : "Dyad"
+    config
+
+f_norm(string s) =>
+    str.upper(str.replace_all(str.replace_all(na(s) ? "" : s, " ", ""), "-", ""))
+
+f_symbol_only(string s) =>
+    string u = f_norm(s)
+    str.contains(u, ":") ? array.get(str.split(u, ":"), 1) : u
+
+f_exchange_prefix(string s) =>
+    string u = f_norm(s)
+    string[] parts = str.split(u, ":")
+    array.size(parts) > 1 ? array.get(parts, 0) : ""
+
+f_same_feed_fx(string tickerId, string ticker) =>
+    string prefix = f_exchange_prefix(tickerId)
+    string feed = prefix != "" and prefix != "TVC" ? prefix : "FX"
+    feed + ":" + ticker
+
+f_same_feed_energy(string tickerId, string ticker) =>
+    string prefix = f_exchange_prefix(tickerId)
+    string feed = prefix != "" ? prefix : "TVC"
+    feed + ":" + ticker
+
+f_is_index_cfd_us100(string s) =>
+    str.contains(s, "US100") or str.contains(s, "NAS100") or str.contains(s, "NDX") or str.contains(s, "USTEC")
+
+f_is_index_cfd_us500(string s) =>
+    str.contains(s, "US500") or str.contains(s, "SP500") or str.contains(s, "SPX500")
+
+f_is_index_cfd_us30(string s) =>
+    str.contains(s, "US30") or str.contains(s, "DJ30")
+
+f_is_fx_eurusd(string s) =>
+    str.contains(s, "EURUSD")
+
+f_is_fx_gbpusd(string s) =>
+    str.contains(s, "GBPUSD")
+
+f_is_fx_dxy(string s) =>
+    str.contains(s, "DXY") or str.contains(s, "DXYUSD")
+
+f_is_fx_usdjpy(string s) =>
+    str.contains(s, "USDJPY")
+
+f_is_fx_usdchf(string s) =>
+    str.contains(s, "USDCHF")
+
+f_is_fx_usdcad(string s) =>
+    str.contains(s, "USDCAD")
+
+f_is_fx_audusd(string s) =>
+    str.contains(s, "AUDUSD")
+
+f_is_fx_nzdusd(string s) =>
+    str.contains(s, "NZDUSD")
+
+f_is_energy_cfd_usoil(string s) =>
+    str.contains(s, "USOIL")
+
+f_is_energy_cfd_ukoil(string s) =>
+    str.contains(s, "UKOIL")
+
+// - - - - - - - - -
+// Futures Detector Functions
+// - - - - - - - - -
+
+// @function Detects Index Futures (NQ/ES/YM/RTY + micro variants)
+// @param ticker The ticker string to check (typically syminfo.ticker)
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectIndicesFutures(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // E-mini Nasdaq (NQ, NQ1!, NQZ2025, etc.) - exclude micros
+    if str.contains(ticker, "NQ") and not str.contains(ticker, "MNQ")
+        result.secondary := "CME_MINI:ES1!"
+        result.tertiary := "CBOT_MINI:YM1!"
+        result.quaternary := "CME_MINI:RTY1!"
+        result.invertTertiary := false
+    // E-mini S&P 500 (ES, ES1!, ESZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "ES") and not str.contains(ticker, "MES")
+        result.secondary := "CME_MINI:NQ1!"
+        result.tertiary := "CBOT_MINI:YM1!"
+        result.quaternary := "CME_MINI:RTY1!"
+        result.invertTertiary := false
+    // E-mini Dow (YM, YM1!, YMZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "YM") and not str.contains(ticker, "MYM")
+        result.secondary := "CME_MINI:RTY1!"
+        result.tertiary := "CME_MINI:ES1!"
+        result.quaternary := "CME_MINI:NQ1!"
+        result.invertTertiary := false
+    // Russell 2000 (RTY, RTY1!, RTYZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "RTY") and not str.contains(ticker, "M2K")
+        result.secondary := "CBOT_MINI:YM1!"
+        result.tertiary := "CME_MINI:ES1!"
+        result.quaternary := "CME_MINI:NQ1!"
+        result.invertTertiary := false
+    // Micro E-mini Nasdaq (MNQ, MNQ1!, MNQZ2025, etc.)
+    else if str.contains(ticker, "MNQ")
+        result.secondary := "CME_MINI:ES1!"
+        result.tertiary := "CBOT_MINI:YM1!"
+        result.quaternary := "CME_MINI:RTY1!"
+        result.invertTertiary := false
+    // Micro E-mini S&P 500 (MES, MES1!, MESZ2025, etc.)
+    else if str.contains(ticker, "MES")
+        result.secondary := "CME_MINI:NQ1!"
+        result.tertiary := "CBOT_MINI:YM1!"
+        result.quaternary := "CME_MINI:RTY1!"
+        result.invertTertiary := false
+    // Micro E-mini Dow (MYM, MYM1!, MYMZ2025, etc.)
+    else if str.contains(ticker, "MYM")
+        result.secondary := "CME_MINI:RTY1!"
+        result.tertiary := "CME_MINI:ES1!"
+        result.quaternary := "CME_MINI:NQ1!"
+        result.invertTertiary := false
+    // Micro Russell 2000 (M2K)
+    else if str.contains(ticker, "M2K")
+        result.secondary := "CBOT_MINI:YM1!"
+        result.tertiary := "CME_MINI:ES1!"
+        result.quaternary := "CME_MINI:NQ1!"
+        result.invertTertiary := false
+
+    result
+
+// @function Detects Index Futures in GXT Mode (NQ/ES/YM triad — RTY excluded)
+// @param ticker The ticker string to check (typically syminfo.ticker)
+// @returns AssetPairing with GXT secondary and tertiary assets (empty for RTY/M2K — falls through to default)
+export detectIndicesFuturesGxt(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+
+    // E-mini Nasdaq (NQ, NQ1!, NQZ2025, etc.) - exclude micros
+    if str.contains(ticker, "NQ") and not str.contains(ticker, "MNQ")
+        result.secondary := "CME_MINI:ES1!"
+        result.tertiary := "CBOT_MINI:YM1!"
+        result.invertTertiary := false
+    // E-mini S&P 500 (ES, ES1!, ESZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "ES") and not str.contains(ticker, "MES")
+        result.secondary := "CME_MINI:NQ1!"
+        result.tertiary := "CBOT_MINI:YM1!"
+        result.invertTertiary := false
+    // E-mini Dow (YM, YM1!, YMZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "YM") and not str.contains(ticker, "MYM")
+        result.secondary := "CME_MINI:ES1!"
+        result.tertiary := "CME_MINI:NQ1!"
+        result.invertTertiary := false
+    // Micro E-mini Nasdaq (MNQ, MNQ1!, MNQZ2025, etc.)
+    else if str.contains(ticker, "MNQ")
+        result.secondary := "CME_MINI:ES1!"
+        result.tertiary := "CBOT_MINI:YM1!"
+        result.invertTertiary := false
+    // Micro E-mini S&P 500 (MES, MES1!, MESZ2025, etc.)
+    else if str.contains(ticker, "MES")
+        result.secondary := "CME_MINI:NQ1!"
+        result.tertiary := "CBOT_MINI:YM1!"
+        result.invertTertiary := false
+    // Micro E-mini Dow (MYM, MYM1!, MYMZ2025, etc.)
+    else if str.contains(ticker, "MYM")
+        result.secondary := "CME_MINI:ES1!"
+        result.tertiary := "CME_MINI:NQ1!"
+        result.invertTertiary := false
+    // Russell (RTY/M2K) — not supported in GXT, returns empty to fall through to default
+
+    result
+
+// @function Detects Metal Futures (GC/SI/HG + micro variants)
+// @param ticker The ticker string to check
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectMetalsFutures(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // Gold (GC, GC1!, GCZ2025, etc.) - exclude micros
+    // COMEX:
+    if str.contains(ticker, "GC") and not str.contains(ticker, "MGC")
+        result.secondary := "COMEX:SI1!"
+        result.tertiary := "COMEX:HG1!"
+        result.quaternary := "FOREXCOM:XAUEUR"
+        result.invertTertiary := false
+    // Silver (SI, SI1!, SIZ2025, etc.) - exclude micro SIL
+    else if str.contains(ticker, "SI") and not str.contains(ticker, "SIL")
+        result.secondary := "COMEX:GC1!"
+        result.tertiary := "COMEX:HG1!"
+        result.quaternary := "OANDA:XAGEUR"
+        result.invertTertiary := false
+    // Copper (HG, HG1!, HGZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "HG") and not str.contains(ticker, "MHG")
+        result.secondary := "COMEX:GC1!"
+        result.tertiary := "COMEX:SI1!"
+        result.invertTertiary := false
+    // Micro Gold (MGC, MGC1!, MGCZ2025, etc.)
+    //COMEX_MINI:
+    else if str.contains(ticker, "MGC")
+        result.secondary := "COMEX_MINI:SIL1!"
+        result.tertiary := "COMEX_MINI:MHG1!"
+        result.quaternary := "FOREXCOM:XAUEUR"
+        result.invertTertiary := false
+    // Micro Silver (SIL, SIL1!, SILZ2025, etc.) 
+    else if str.contains(ticker, "SIL")
+        result.secondary := "COMEX_MINI:MGC1!"
+        result.tertiary := "COMEX_MINI:MHG1!"
+        result.quaternary := "OANDA:XAGEUR"
+        result.invertTertiary := false
+    // Micro Copper (MHG, MHG1!, MHGZ2025, etc.)
+    else if str.contains(ticker, "MHG")
+        result.secondary := "COMEX_MINI:MGC1!"
+        result.tertiary := "COMEX_MINI:SIL1!"
+        result.invertTertiary := false
+    
+    result
+
+// @function Detects Metal Futures in Quad Mode (Gold→SI/XAUEUR/XAUGBP, Silver→GC/XAGEUR/XAGGBP)
+// @param ticker The ticker string to check
+// @returns AssetPairing with futures secondary + GXT cross-pairs as tertiary/quaternary (empty for copper — falls through to default)
+export detectMetalsFuturesQuad(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // Gold (GC, GC1!, GCZ2025, etc.) - exclude micros
+    if str.contains(ticker, "GC") and not str.contains(ticker, "MGC")
+        result.secondary := "COMEX:SI1!"
+        result.tertiary := "FOREXCOM:XAUEUR"
+        result.quaternary := "FOREXCOM:XAUGBP"
+    // Silver (SI, SI1!, SIZ2025, etc.) - exclude micro SIL
+    else if str.contains(ticker, "SI") and not str.contains(ticker, "SIL")
+        result.secondary := "COMEX:GC1!"
+        result.tertiary := "OANDA:XAGEUR"
+        result.quaternary := "OANDA:XAGGBP"
+    // Micro Gold (MGC, MGC1!, MGCZ2025, etc.)
+    else if str.contains(ticker, "MGC")
+        result.secondary := "COMEX_MINI:SIL1!"
+        result.tertiary := "FOREXCOM:XAUEUR"
+        result.quaternary := "FOREXCOM:XAUGBP"
+    // Micro Silver (SIL, SIL1!, SILZ2025, etc.)
+    else if str.contains(ticker, "SIL")
+        result.secondary := "COMEX_MINI:MGC1!"
+        result.tertiary := "OANDA:XAGEUR"
+        result.quaternary := "OANDA:XAGGBP"
+    // Copper (HG/MHG) — not supported in Quad, returns empty to fall through to default
+    
+    result
+
+// @function Detects Metal Futures in GXT Mode (Gold→XAUEUR/XAUGBP, Silver→XAGEUR/XAGGBP)
+// @param ticker The ticker string to check
+// @returns AssetPairing with GXT secondary and tertiary assets (empty for copper — falls through to default)
+export detectMetalsFuturesGxt(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // Gold (GC, GC1!, GCZ2025, etc.) - exclude micros
+    if str.contains(ticker, "GC") and not str.contains(ticker, "MGC")
+        result.secondary := "FOREXCOM:XAUEUR"
+        result.tertiary := "FOREXCOM:XAUGBP"
+    // Silver (SI, SI1!, SIZ2025, etc.) - exclude micro SIL
+    else if str.contains(ticker, "SI") and not str.contains(ticker, "SIL")
+        result.secondary := "OANDA:XAGEUR"
+        result.tertiary := "OANDA:XAGGBP"
+    // Micro Gold (MGC, MGC1!, MGCZ2025, etc.)
+    else if str.contains(ticker, "MGC")
+        result.secondary := "FOREXCOM:XAUEUR"
+        result.tertiary := "FOREXCOM:XAUGBP"
+    // Micro Silver (SIL, SIL1!, SILZ2025, etc.)
+    else if str.contains(ticker, "SIL")
+        result.secondary := "OANDA:XAGEUR"
+        result.tertiary := "OANDA:XAGGBP"
+    // Copper (HG/MHG) — not supported in GXT, returns empty to fall through to default
+    
+    result
+
+// @function Detects Forex Futures (6E/6B + micro variants)
+// @param ticker The ticker string to check
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectForexFutures(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // Euro FX (6E, 6E1!, 6EZ2025, etc.) - exclude micros
+    if str.contains(ticker, "6E") and not str.contains(ticker, "M6E")
+        result.secondary := "CME:6B1!"
+        result.tertiary := "TVC:DXY"
+        result.invertTertiary := true
+    // British Pound (6B, 6B1!, 6BZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "6B") and not str.contains(ticker, "M6B")
+        result.secondary := "CME:6E1!"
+        result.tertiary := "TVC:DXY"
+        result.invertTertiary := true
+    // Micro Euro FX (M6E, M6E1!, M6EZ2025, etc.)
+    else if str.contains(ticker, "M6E")
+        result.secondary := "CME:M6B1!"
+        result.tertiary := "TVC:DXY"
+        result.invertTertiary := true
+    // Micro British Pound (M6B, M6B1!, M6BZ2025, etc.)
+    else if str.contains(ticker, "M6B")
+        result.secondary := "CME:M6E1!"
+        result.tertiary := "TVC:DXY"
+        result.invertTertiary := true
+    
+    result
+
+// @function Detects Energy Futures (CL/RB/HO + micro variants)
+// @param ticker The ticker string to check
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectEnergyFutures(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // Crude Oil (CL, CL1!, CLZ2025, etc.) - exclude micros
+    if str.contains(ticker, "CL") and not str.contains(ticker, "MCL")
+        result.secondary := "NYMEX:RB1!"
+        result.tertiary := "NYMEX:HO1!"
+        result.invertTertiary := false
+    // RBOB Gasoline (RB, RB1!, RBZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "RB") and not str.contains(ticker, "MRB")
+        result.secondary := "NYMEX:CL1!"
+        result.tertiary := "NYMEX:HO1!"
+        result.invertTertiary := false
+    // Heating Oil (HO, HO1!, HOZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "HO") and not str.contains(ticker, "MHO")
+        result.secondary := "NYMEX:CL1!"
+        result.tertiary := "NYMEX:RB1!"
+        result.invertTertiary := false
+    // Micro Crude Oil (MCL, MCL1!, MCLZ2025, etc.)
+    else if str.contains(ticker, "MCL")
+        result.secondary := "NYMEX:RB1!"
+        result.tertiary := "NYMEX:HO1!"
+        result.invertTertiary := false
+    // Micro RBOB Gasoline (MRB)
+    else if str.contains(ticker, "MRB")
+        result.secondary := "NYMEX:CL1!"
+        result.tertiary := "NYMEX:HO1!"
+        result.invertTertiary := false
+    // Micro Heating Oil (MHO)
+    else if str.contains(ticker, "MHO")
+        result.secondary := "NYMEX:CL1!"
+        result.tertiary := "NYMEX:RB1!"
+        result.invertTertiary := false
+    
+    result
+
+// @function Detects Treasury Futures (ZB/ZF/ZN)
+// @param ticker The ticker string to check
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectTreasuryFutures(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // 30-Year T-Bonds (ZB, ZB1!, ZBZ2025, etc.)
+    if str.contains(ticker, "ZB")
+        result.secondary := "CBOT:ZF1!"
+        result.tertiary := "CBOT:ZN1!"
+        result.invertTertiary := false
+    // 5-Year T-Notes (ZF, ZF1!, ZFZ2025, etc.)
+    else if str.contains(ticker, "ZF")
+        result.secondary := "CBOT:ZB1!"
+        result.tertiary := "CBOT:ZN1!"
+        result.invertTertiary := false
+    // 10-Year T-Notes (ZN, ZN1!, ZNZ2025, etc.)
+    else if str.contains(ticker, "ZN")
+        result.secondary := "CBOT:ZB1!"
+        result.tertiary := "CBOT:ZF1!"
+        result.invertTertiary := false
+    
+    result
+
+// @function Detects CME Crypto Futures (BTC/ETH + micro variants)
+// @param ticker The ticker string to check
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectCryptoFutures(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // CME Bitcoin (BTC, BTC1!, BTCZ2025, etc.) - exclude micros
+    if str.contains(ticker, "BTC") and not str.contains(ticker, "MBT")
+        result.secondary := "CME:ETH1!"
+        result.tertiary := "CRYPTOCAP:TOTAL3"
+        result.invertTertiary := false
+    // CME Ethereum (ETH, ETH1!, ETHZ2025, etc.) - exclude micros
+    else if str.contains(ticker, "ETH") and not str.contains(ticker, "MET")
+        result.secondary := "CME:BTC1!"
+        result.tertiary := "CRYPTOCAP:TOTAL3"
+        result.invertTertiary := false
+    // Micro Bitcoin (MBT, MBT1!, MBTZ2025, etc.)
+    else if str.contains(ticker, "MBT")
+        result.secondary := "CME:ETH1!"
+        result.tertiary := "CRYPTOCAP:TOTAL3"
+        result.invertTertiary := false
+    // Micro Ethereum (MET, MET1!, METZ2025, etc.)
+    else if str.contains(ticker, "MET")
+        result.secondary := "CME:BTC1!"
+        result.tertiary := "CRYPTOCAP:TOTAL3"
+        result.invertTertiary := false
+    
+    result
+
+// @function Detects CAD Forex Futures (6C + micro variants)
+// @param ticker The ticker string to check
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectCADFutures(string ticker) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // Canadian Dollar (6C, 6C1!, 6CZ2025, etc.) - exclude micros
+    // 6C is inverse of USDCAD - when viewing from 6C, invert both secondary and tertiary
+    if str.contains(ticker, "6C") and not str.contains(ticker, "M6C")
+        result.secondary := "FOREXCOM:USDCAD"
+        result.tertiary := "TVC:DXY"
+        result.invertSecondary := true   // 6C moves opposite to USDCAD
+        result.invertTertiary := true    // 6C moves opposite to DXY
+    // Micro Canadian Dollar (M6C, M6C1!, M6CZ2025, etc.)
+    else if str.contains(ticker, "M6C")
+        result.secondary := "FOREXCOM:USDCAD"
+        result.tertiary := "TVC:DXY"
+        result.invertSecondary := true   // M6C moves opposite to USDCAD
+        result.invertTertiary := true    // M6C moves opposite to DXY
+    
+    result
+
+// - - - - - - - - -
+// CFD Detector Functions
+// - - - - - - - - -
+
+// @function Preserved QT Forex CFD layer with same-feed FX legs
+// @param ticker The ticker string to check
+// @param tickerId The full ticker ID (syminfo.tickerid) for primary asset
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectForexCFD(string ticker, string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    string sym = f_symbol_only(ticker)
+    bool eg = f_is_fx_eurusd(sym) or f_is_fx_gbpusd(sym)
+    bool dxy = f_is_fx_dxy(sym)
+    bool an = f_is_fx_audusd(sym) or f_is_fx_nzdusd(sym)
+    bool usd_fx = f_is_fx_usdcad(sym) or f_is_fx_usdjpy(sym) or f_is_fx_usdchf(sym)
+    if eg
+        result.primary := tickerId
+        result.secondary := f_same_feed_fx(tickerId, f_is_fx_eurusd(sym) ? "GBPUSD" : "EURUSD")
+        result.tertiary := "TVC:DXY"
+        result.quaternary := f_same_feed_fx(tickerId, "AUDUSD")
+        result.invertTertiary := true
+    else if dxy
+        result.primary := tickerId
+        result.secondary := f_same_feed_fx(tickerId, "EURUSD")
+        result.tertiary := f_same_feed_fx(tickerId, "GBPUSD")
+        result.invertSecondary := true
+        result.invertTertiary := true
+    else if an
+        result.primary := tickerId
+        result.secondary := f_same_feed_fx(tickerId, f_is_fx_audusd(sym) ? "NZDUSD" : "AUDUSD")
+        result.tertiary := f_same_feed_fx(tickerId, "GBPUSD")
+    else if usd_fx
+        result.primary := tickerId
+        result.secondary := "TVC:DXY"
+        result.tertiary := f_is_fx_usdcad(sym) ? "CME:6C1!" : f_is_fx_usdjpy(sym) ? "CME:6J1!" : "CME:6S1!"
+        result.invertTertiary := true
+    result
+
+// @function Detects the USOIL/UKOIL energy CFD correlation layer
+// @param ticker The ticker string to check
+// @param tickerId The full ticker ID for the current chart asset
+// @returns AssetPairing ordered as peer oil and inverse USDCAD
+export detectEnergyCFD(string ticker, string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    string sym = f_symbol_only(ticker)
+    if f_is_energy_cfd_usoil(sym)
+        result.primary := tickerId
+        result.secondary := f_same_feed_energy(tickerId, "UKOIL")
+        result.tertiary := f_same_feed_fx(tickerId, "USDCAD")
+        result.invertTertiary := true
+    else if f_is_energy_cfd_ukoil(sym)
+        result.primary := tickerId
+        result.secondary := f_same_feed_energy(tickerId, "USOIL")
+        result.tertiary := f_same_feed_fx(tickerId, "USDCAD")
+        result.invertTertiary := true
+    result
+// @function Detects major Crypto assets (BTC, ETH, SOL, XRP, alts)
+// @param ticker The ticker string to check
+// @param tickerId The full ticker ID for primary asset
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectCrypto(string ticker, string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // Major Crypto Triad (BTC/ETH/TOTAL3)
+    if str.contains(ticker, "BTC")
+        result.primary := tickerId
+        result.secondary := "BITGET:ETHUSDT.P"
+        result.tertiary := "CRYPTOCAP:TOTAL3"
+        result.invertTertiary := false
+    else if str.contains(ticker, "ETH") and not str.contains(ticker, "METH") // exclude staked ETH variants
+        result.primary := tickerId
+        result.secondary := "BITGET:BTCUSDT.P"
+        result.tertiary := "CRYPTOCAP:TOTAL3"
+        result.invertTertiary := false
+    // SOL/XRP Triad
+    else if str.contains(ticker, "SOL")
+        result.primary := tickerId
+        result.secondary := "BITGET:XRPUSDT.P"
+        result.tertiary := "CRYPTOCAP:TOTAL3"
+        result.invertTertiary := false
+    else if str.contains(ticker, "XRP")
+        result.primary := tickerId
+        result.secondary := "BITGET:SOLUSDT.P"
+        result.tertiary := "CRYPTOCAP:TOTAL3"
+        result.invertTertiary := false
+    // Alt High Mcap Triads (correlated to BTC/ETH)
+    else if str.contains(ticker, "ZEC")
+        result.primary := "BITGET:ZECUSDT.P"
+        result.secondary := "BITGET:BTCUSDT.P"
+        result.tertiary := "BITGET:ETHUSDT.P"
+        result.invertTertiary := false
+    else if str.contains(ticker, "DOGE")
+        result.primary := "BITGET:DOGEUSDT.P"
+        result.secondary := "BITGET:BTCUSDT.P"
+        result.tertiary := "BITGET:ETHUSDT.P"
+        result.invertTertiary := false
+    else if str.contains(ticker, "ADA")
+        result.primary := "BITGET:ADAUSDT.P"
+        result.secondary := "BITGET:BTCUSDT.P"
+        result.tertiary := "BITGET:ETHUSDT.P"
+        result.invertTertiary := false
+    else if str.contains(ticker, "BNB")
+        result.primary := "BITGET:BNBUSDT.P"
+        result.secondary := "BITGET:BTCUSDT.P"
+        result.tertiary := "BITGET:ETHUSDT.P"
+        result.invertTertiary := false
+    else if str.contains(ticker, "TAO")
+        result.primary := "BITGET:TAOUSDT.P"
+        result.secondary := "BITGET:BTCUSDT.P"
+        result.tertiary := "BITGET:ETHUSDT.P"
+        result.invertTertiary := false
+    
+    result
+
+// @function Detects Metals CFD (XAU/XAG/Copper + EUR/GBP cross-pairs)
+// @param ticker The ticker string to check
+// @param tickerId The full ticker ID for primary asset
+// @returns AssetPairing with secondary and tertiary assets configured
+export detectMetalsCFD(string ticker, string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    
+    if str.contains(ticker, "XAUUSD")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAGUSD"
+        result.tertiary := "FOREXCOM:COPPER"
+        result.invertTertiary := false
+    else if str.contains(ticker, "COPPER")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "FOREXCOM:XAGUSD"
+        result.invertTertiary := false
+    else if str.contains(ticker, "XAGUSD")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "FOREXCOM:COPPER"
+        result.invertTertiary := false
+    // EUR/GBP cross-pairs → USD base + opposite cross
+    else if str.contains(ticker, "XAUEUR")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "FOREXCOM:XAUGBP"
+        result.invertTertiary := false
+    else if str.contains(ticker, "XAUGBP")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "FOREXCOM:XAUEUR"
+        result.invertTertiary := false
+    else if str.contains(ticker, "XAGEUR")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAGUSD"
+        result.tertiary := "OANDA:XAGGBP"
+        result.invertTertiary := false
+    else if str.contains(ticker, "XAGGBP")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAGUSD"
+        result.tertiary := "OANDA:XAGEUR"
+        result.invertTertiary := false
+    
+    result
+
+// @function Detects Metals CFD in GXT Mode (XAUUSD→XAUEUR/XAUGBP, XAGUSD→XAGEUR/XAGGBP)
+// @param ticker The ticker string to check
+// @param tickerId The full ticker ID for primary asset
+// @returns AssetPairing with GXT secondary and tertiary assets (empty for copper — falls through to default)
+export detectMetalsCFDGxt(string ticker, string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    
+    // Outbound: USD-base → cross-pair triads
+    if str.contains(ticker, "XAUUSD")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUEUR"
+        result.tertiary := "FOREXCOM:XAUGBP"
+    else if str.contains(ticker, "XAGUSD")
+        result.primary := tickerId
+        result.secondary := "OANDA:XAGEUR"
+        result.tertiary := "OANDA:XAGGBP"
+    // Inbound: cross-pair charts → USD-base as secondary (preserved in dyad)
+    else if str.contains(ticker, "XAUEUR")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "FOREXCOM:XAUGBP"
+    else if str.contains(ticker, "XAUGBP")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "FOREXCOM:XAUEUR"
+    else if str.contains(ticker, "XAGEUR")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAGUSD"
+        result.tertiary := "OANDA:XAGGBP"
+    else if str.contains(ticker, "XAGGBP")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAGUSD"
+        result.tertiary := "OANDA:XAGEUR"
+    // COPPER — not supported in GXT, returns empty to fall through to default
+    
+    result
+
+// @function Detects Metals CFD in Quad Mode (XAUUSD→XAGUSD/XAUEUR/XAUGBP, XAGUSD→XAUUSD/XAGEUR/XAGGBP, cross-pairs→USD base/correlated metal/opposite cross)
+// @param ticker The ticker string to check
+// @param tickerId The full ticker ID for primary asset
+// @returns AssetPairing with quad assets (empty for copper — falls through to default)
+export detectMetalsCFDQuad(string ticker, string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    
+    if str.contains(ticker, "XAUUSD")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAGUSD"
+        result.tertiary := "FOREXCOM:XAUEUR"
+        result.quaternary := "FOREXCOM:XAUGBP"
+    else if str.contains(ticker, "XAGUSD")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "OANDA:XAGEUR"
+        result.quaternary := "OANDA:XAGGBP"
+    // EUR/GBP cross-pairs → USD base + correlated metal USD + opposite cross
+    else if str.contains(ticker, "XAUEUR")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "FOREXCOM:XAGUSD"
+        result.quaternary := "FOREXCOM:XAUGBP"
+    else if str.contains(ticker, "XAUGBP")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAUUSD"
+        result.tertiary := "FOREXCOM:XAGUSD"
+        result.quaternary := "FOREXCOM:XAUEUR"
+    else if str.contains(ticker, "XAGEUR")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAGUSD"
+        result.tertiary := "FOREXCOM:XAUUSD"
+        result.quaternary := "OANDA:XAGGBP"
+    else if str.contains(ticker, "XAGGBP")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:XAGUSD"
+        result.tertiary := "FOREXCOM:XAUUSD"
+        result.quaternary := "OANDA:XAGEUR"
+    // Copper — not supported in Quad CFD, returns empty to fall through
+    
+    result
+
+// @function Preserved QT Index CFD layer (US100/US500/US30 aliases)
+// @param ticker The ticker string to check
+// @param tickerId The full ticker ID for primary asset
+// @returns AssetPairing with CAPITALCOM secondary and tertiary assets
+export detectIndicesCFD(string ticker, string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    string sym = f_symbol_only(ticker)
+    if f_is_index_cfd_us100(sym)
+        result.primary := tickerId
+        result.secondary := "CAPITALCOM:US500"
+        result.tertiary := "CAPITALCOM:US30"
+    else if f_is_index_cfd_us500(sym)
+        result.primary := tickerId
+        result.secondary := "CAPITALCOM:US100"
+        result.tertiary := "CAPITALCOM:US30"
+    else if f_is_index_cfd_us30(sym)
+        result.primary := tickerId
+        result.secondary := "CAPITALCOM:US100"
+        result.tertiary := "CAPITALCOM:US500"
+    result
+
+// @function Detects EU Stock Indices (GER40/EU50) - Dyad only
+// @param ticker The ticker string to check
+// @param tickerId The full ticker ID for primary asset
+// @returns AssetPairing with secondary asset configured (tertiary empty for dyad)
+export detectEUStocks(string ticker, string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    
+    if str.contains(ticker, "GER40")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:EU50"
+        result.invertSecondary := false
+    else if str.contains(ticker, "EU50")
+        result.primary := tickerId
+        result.secondary := "FOREXCOM:GER40"
+        result.invertSecondary := false
+    
+    result
+
+// - - - - - - - - -
+// Fallback Defaults
+// - - - - - - - - -
+
+// @function Returns default fallback assets (chart ticker only, no correlation)
+// @param tickerId The full ticker ID for primary asset
+// @returns AssetPairing with chart ticker as primary, empty secondary/tertiary (no correlation)
+export getDefaultFallback(string tickerId) =>
+    AssetPairing result = AssetPairing.new()
+    result.primary := tickerId
+    // Return chart ticker only - no correlation for unknown assets
+    result.secondary := ""
+    result.tertiary := ""
+    result.invertTertiary := false
+    result
+
+// - - - - - - - - -
+// Utility Functions
+// - - - - - - - - -
+
+// @function Applies futures session modifier to ticker WITH back adjustment
+// @param tickerStr The ticker to modify
+// @param sessionType The session type (syminfo.session)
+// @returns Modified ticker string with session and backadjustment.on applied
+export applySessionModifierWithBackadjust(string tickerStr, string sessionType) =>
+    ticker.modify(tickerStr, session = sessionType, backadjustment = backadjustment.on)
+
+// @function Applies futures session modifier to ticker WITHOUT back adjustment
+// @param tickerStr The ticker to modify
+// @param sessionType The session type (syminfo.session)
+// @returns Modified ticker string with session and backadjustment.off applied
+export applySessionModifierNoBackadjust(string tickerStr, string sessionType) =>
+    ticker.modify(tickerStr, session = sessionType, backadjustment = backadjustment.off)
+
+// @function Checks if a pairing represents a valid triad (3 assets)
+// @param pairing The AssetPairing to check
+// @returns True if tertiary is non-empty (triad mode), false for dyad
+export isTriadMode(AssetPairing pairing) =>
+    pairing.tertiary != ""
+
+// @function Checks if a pairing contains a fourth asset
+export isTetradMode(AssetPairing pairing) =>
+    pairing.quaternary != ""
+
+// @function Extracts clean ticker string from full ticker ID
+// @param tickerId The full ticker ID (e.g., "BITGET:BTCUSDT.P")
+// @returns Clean ticker string (e.g., "BTCUSDT.P")
+export getAssetTicker(string tickerId) =>
+    str.tostring(syminfo.ticker(tickerId))
+
+// - - - - - - - - -
+// Triad/Dyad Resolution (Inversion Logic)
+// - - - - - - - - -
+
+// @function Resolves triad asset assignments with proper inversion flags
+// @param chartTickerId The current chart's ticker ID (syminfo.tickerid)
+// @param pairing The detected AssetPairing
+// @returns Tuple [primaryAsset, secondaryAsset, tertiaryAsset, invertSecondary, invertTertiary]
+export resolveTriad(string chartTickerId, AssetPairing pairing) =>
+    string primaryAsset   = chartTickerId
+    string secondaryAsset = chartTickerId
+    string tertiaryAsset  = chartTickerId
+    bool   invertSecondary = false
+    bool   invertTertiary  = false
+    
+    // Determine which asset in the triad matches the chart
+    bool isAsset1 = str.contains(chartTickerId, pairing.primary) or pairing.primary == ""
+    bool isAsset2 = str.contains(chartTickerId, pairing.secondary)
+    bool isAsset3 = str.contains(chartTickerId, pairing.tertiary)
+    
+    // Assign secondary and tertiary based on chart position
+    if isAsset1 or (not isAsset2 and not isAsset3)
+        secondaryAsset := pairing.secondary
+        tertiaryAsset := pairing.tertiary
+    else if isAsset2
+        secondaryAsset := pairing.primary != "" ? pairing.primary : chartTickerId
+        tertiaryAsset := pairing.tertiary
+    else if isAsset3
+        secondaryAsset := pairing.primary != "" ? pairing.primary : chartTickerId
+        tertiaryAsset := pairing.secondary
+    
+    // Apply inversion logic based on chart position and pairing config
+    if (isAsset1 or isAsset2) and pairing.invertTertiary
+        invertTertiary := true
+    if isAsset3 and pairing.invertTertiary
+        // When viewing from asset3, both secondary and tertiary are inverted relative to it
+        invertSecondary := true
+        invertTertiary := true
+    
+    [primaryAsset, secondaryAsset, tertiaryAsset, invertSecondary, invertTertiary]
+
+// @function Resolves dyad asset assignment with proper inversion flag
+// @param chartTickerId The current chart's ticker ID
+// @param pairing The detected AssetPairing (dyad: tertiary is empty)
+// @returns Tuple [primaryAsset, secondaryAsset, invertSecondary]
+export resolveDyad(string chartTickerId, AssetPairing pairing) =>
+    string primaryAsset   = chartTickerId
+    string secondaryAsset = chartTickerId
+    bool   invertSecondary = false
+    
+    // Determine which asset in the dyad matches the chart
+    bool isAsset1 = str.contains(chartTickerId, pairing.primary) or pairing.primary == ""
+    bool isAsset2 = str.contains(chartTickerId, pairing.secondary)
+    
+    if isAsset1 or not isAsset2
+        secondaryAsset := pairing.secondary
+    else if isAsset2
+        secondaryAsset := pairing.primary != "" ? pairing.primary : chartTickerId
+    
+    // Apply inversion logic
+    if (isAsset1 or isAsset2) and pairing.invertSecondary
+        invertSecondary := true
+    
+    [primaryAsset, secondaryAsset, invertSecondary]
+
+// @function Resolves quad asset assignments with proper inversion flags (4 assets, primary-only divergences)
+// @param chartTickerId The current chart's ticker ID (syminfo.tickerid)
+// @param pairing The detected AssetPairing with quaternary populated
+// @returns Tuple [primaryAsset, secondaryAsset, tertiaryAsset, quaternaryAsset, invertSecondary, invertTertiary, invertQuaternary]
+export resolveQuad(string chartTickerId, AssetPairing pairing) =>
+    string primaryAsset    = chartTickerId
+    string secondaryAsset  = chartTickerId
+    string tertiaryAsset   = chartTickerId
+    string quaternaryAsset = chartTickerId
+    bool   invertSecondary  = false
+    bool   invertTertiary   = false
+    bool   invertQuaternary = false
+    
+    // Determine which asset in the quad matches the chart
+    bool isAsset1 = str.contains(chartTickerId, pairing.primary) or pairing.primary == ""
+    bool isAsset2 = str.contains(chartTickerId, pairing.secondary)
+    bool isAsset3 = str.contains(chartTickerId, pairing.tertiary)
+    bool isAsset4 = str.contains(chartTickerId, pairing.quaternary)
+    
+    // Assign secondary, tertiary, quaternary based on chart position
+    if isAsset1 or (not isAsset2 and not isAsset3 and not isAsset4)
+        secondaryAsset := pairing.secondary
+        tertiaryAsset := pairing.tertiary
+        quaternaryAsset := pairing.quaternary
+    else if isAsset2
+        secondaryAsset := pairing.primary != "" ? pairing.primary : chartTickerId
+        tertiaryAsset := pairing.tertiary
+        quaternaryAsset := pairing.quaternary
+    else if isAsset3
+        secondaryAsset := pairing.primary != "" ? pairing.primary : chartTickerId
+        tertiaryAsset := pairing.secondary
+        quaternaryAsset := pairing.quaternary
+    else if isAsset4
+        secondaryAsset := pairing.primary != "" ? pairing.primary : chartTickerId
+        tertiaryAsset := pairing.secondary
+        quaternaryAsset := pairing.tertiary
+    
+    // Apply inversion logic based on chart position and pairing config
+    if (isAsset1 or isAsset2) and pairing.invertTertiary
+        invertTertiary := true
+    if (isAsset1 or isAsset2 or isAsset3) and pairing.invertQuaternary
+        invertQuaternary := true
+    if isAsset3 and pairing.invertTertiary
+        invertSecondary := true
+        invertTertiary := true
+    if isAsset4 and pairing.invertQuaternary
+        invertSecondary := true
+        invertTertiary := true
+        invertQuaternary := true
+    
+    [primaryAsset, secondaryAsset, tertiaryAsset, quaternaryAsset, invertSecondary, invertTertiary, invertQuaternary]
+
+// @function Tetrad-named alias for the legacy resolveQuad() export
+export resolveTetrad(string chartTickerId, AssetPairing pairing) =>
+    resolveQuad(chartTickerId, pairing)
+
+// - - - - - - - - -
+// Main Entry Point
+// - - - - - - - - -
+//
+// INTEGRATION GUIDE
+// -----------------
+// Below are common patterns for consuming this library in your indicator.
+// All examples use PSP (Precision Swing Point) as a generic case study.
+//
+// PATTERN 1 — Basic Auto Mode (simplest)
+//   import fstarcapital/AssetCorrelationUtils/13 as AC
+//   AC.AssetConfig config = AC.resolveCurrentChart()
+//   string asset2 = config.secondary    // auto-resolved correlated asset
+//   string asset3 = config.tertiary     // auto-resolved third asset
+//
+// PATTERN 2 — Auto Mode with GXT (metals currency-cross, indices minus RTY)
+//   string  divMode  = input.string('Triad', 'Divergence Mode', options=['Dyad','Triad','Triad (GXT)'])
+//   bool    gxt      = divMode == 'Triad (GXT)'
+//   AC.AssetConfig config = AC.resolveCurrentChart(gxt)
+//   // On Gold/Silver charts with GXT: remaps to XAUEUR/XAUGBP or XAGEUR/XAGGBP
+//   // On NQ/ES/YM charts with GXT: the other two of the trio, RTY excluded
+//   // On all other charts: behaves identically to resolveCurrentChart(false)
+//
+// PATTERN 3 — Off / Auto / Manual tri-state
+//   string  preset = input.string('Auto', 'Correlation Mode', options=['Off','Auto','Manual'])
+//   string  divMode = input.string('Triad', 'Divergence Mode', options=['Dyad','Triad','Triad (GXT)'], active = preset == 'Auto')
+//   string  manual2 = input.symbol('', 'Asset 2', active = preset == 'Manual')
+//   string  manual3 = input.symbol('', 'Asset 3', active = preset == 'Manual')
+//   bool    inv3    = input.bool(false, 'Invert Asset 3', active = preset == 'Manual')
+//
+//   AC.AssetConfig config = AC.AssetConfig.new()
+//   if preset == 'Auto'
+//       config := AC.resolveCurrentChart(divMode == 'Triad (GXT)')
+//       if divMode == 'Dyad'
+//           config.tertiary := ''
+//           config.isTriadMode := false
+//   else if preset == 'Manual'
+//       config.secondary := manual2
+//       config.tertiary  := manual3
+//       config.invertTertiary := inv3
+//       config.detected := true
+//   // preset == 'Off': config stays empty — disable correlation
+//
+// PATTERN 4 — Futures with explicit session/backadjust control
+//   bool forceETH = true
+//   AC.AssetConfig config = AC.resolveAssets(
+//       syminfo.ticker, syminfo.tickerid, syminfo.type, syminfo.session,
+//       forceETH, divMode == 'Triad (GXT)')
+//   // Use resolveAssets() when you need to control backadjustment explicitly.
+//   // Use resolveCurrentChart() for most indicators (defaults to backadjust on).
+//
+// ASSETCONFIG FIELDS
+// ------------------
+//   .detected         (bool)   — true if the chart asset was recognized
+//   .isTriadMode      (bool)   — true if 3 assets resolved, false for dyad
+//   .primary          (string) — resolved primary ticker ID
+//   .secondary        (string) — resolved secondary ticker ID
+//   .tertiary         (string) — resolved tertiary ticker ID (empty for dyad)
+//   .invertSecondary  (bool)   — true if secondary divergence should be inverted
+//   .invertTertiary   (bool)   — true if tertiary divergence should be inverted
+//   .assetCategory    (string) — category tag (for example "index_futures", "metal_cfd_gxt")
+//
+// - - - - - - - - -
+// AUTO MODE MATRIX
+// - - - - - - - - -
+//
+// This section gives the result of every mode on every supported chart symbol.
+// The tables are the branches of the detector functions, in resolution order.
+//
+// HOW A MODE MAPS TO THE PARAMETERS
+//   Triad         resolveCurrentChart()             gxtMode = false, quadMode = false
+//   Triad (GXT)   resolveCurrentChart(true)         gxtMode = true
+//   Tetrad        resolveCurrentChart(false, true)  quadMode = true
+//   Dyad          Not a library mode. Call the Triad branch. Then set
+//                 config.tertiary := "" and config.isTriadMode := false yourself.
+//
+// PRECEDENCE
+//   Metals read quadMode first, then gxtMode, then the default branch.
+//   Index futures ignore gxtMode while quadMode is true.
+//   Every other asset class ignores both flags and always returns the Triad branch.
+//   A symbol with no branch for the mode you asked for returns the Triad branch.
+//
+// HOW TO READ THE TABLES
+//   [inv]   The leg carries an inversion flag (invertSecondary or invertTertiary).
+//   —       The mode gives no Asset 4. config.isQuadMode stays false.
+//   Micro contracts get their own rows, because their legs are different.
+//
+// INDEX FUTURES  (assetCategory: index_futures, index_futures_gxt)
+//   Chart      Mode          Asset 2               Asset 3               Asset 4
+//   ---------  ------------  --------------------  --------------------  -------------------
+//   NQ, MNQ    Triad, GXT    CME_MINI:ES1!         CBOT_MINI:YM1!        —
+//   NQ, MNQ    Tetrad        CME_MINI:ES1!         CBOT_MINI:YM1!        CME_MINI:RTY1!
+//   ES, MES    Triad, GXT    CME_MINI:NQ1!         CBOT_MINI:YM1!        —
+//   ES, MES    Tetrad        CME_MINI:NQ1!         CBOT_MINI:YM1!        CME_MINI:RTY1!
+//   YM, MYM    Triad         CME_MINI:RTY1!        CME_MINI:ES1!         —
+//   YM, MYM    GXT           CME_MINI:ES1!         CME_MINI:NQ1!         —
+//   YM, MYM    Tetrad        CME_MINI:RTY1!        CME_MINI:ES1!         CME_MINI:NQ1!
+//   RTY, M2K   Triad, GXT    CBOT_MINI:YM1!        CME_MINI:ES1!         —
+//   RTY, M2K   Tetrad        CBOT_MINI:YM1!        CME_MINI:ES1!         CME_MINI:NQ1!
+//   GXT drops Russell. RTY and M2K have no GXT branch, so they give the Triad result.
+//   Micro charts get full-size legs. An MNQ chart gives ES1!, not MES1!.
+//
+// METAL FUTURES  (metal_futures, metal_futures_gxt, metal_futures_quad)
+//   Chart      Mode          Asset 2               Asset 3               Asset 4
+//   ---------  ------------  --------------------  --------------------  -------------------
+//   GC         Triad         COMEX:SI1!            COMEX:HG1!            —
+//   GC         GXT           FOREXCOM:XAUEUR       FOREXCOM:XAUGBP       —
+//   GC         Tetrad        COMEX:SI1!            FOREXCOM:XAUEUR       FOREXCOM:XAUGBP
+//   SI         Triad         COMEX:GC1!            COMEX:HG1!            —
+//   SI         GXT           OANDA:XAGEUR          OANDA:XAGGBP          —
+//   SI         Tetrad        COMEX:GC1!            OANDA:XAGEUR          OANDA:XAGGBP
+//   HG         All modes     COMEX:GC1!            COMEX:SI1!            —
+//   MGC        Triad         COMEX_MINI:SIL1!      COMEX_MINI:MHG1!      —
+//   MGC        GXT           FOREXCOM:XAUEUR       FOREXCOM:XAUGBP       —
+//   MGC        Tetrad        COMEX_MINI:SIL1!      FOREXCOM:XAUEUR       FOREXCOM:XAUGBP
+//   SIL        Triad         COMEX_MINI:MGC1!      COMEX_MINI:MHG1!      —
+//   SIL        GXT           OANDA:XAGEUR          OANDA:XAGGBP          —
+//   SIL        Tetrad        COMEX_MINI:MGC1!      OANDA:XAGEUR          OANDA:XAGGBP
+//   MHG        All modes     COMEX_MINI:MGC1!      COMEX_MINI:SIL1!      —
+//   Copper has no GXT branch and no Tetrad branch. HG and MHG give the Triad result.
+//   Metal micro charts keep micro legs, except for the currency crosses.
+//
+// METAL CFD  (metal_cfd, metal_cfd_gxt, metal_cfd_quad)
+//   Chart      Mode          Asset 2               Asset 3               Asset 4
+//   ---------  ------------  --------------------  --------------------  -------------------
+//   XAUUSD     Triad         FOREXCOM:XAGUSD       FOREXCOM:COPPER       —
+//   XAUUSD     GXT           FOREXCOM:XAUEUR       FOREXCOM:XAUGBP       —
+//   XAUUSD     Tetrad        FOREXCOM:XAGUSD       FOREXCOM:XAUEUR       FOREXCOM:XAUGBP
+//   XAGUSD     Triad         FOREXCOM:XAUUSD       FOREXCOM:COPPER       —
+//   XAGUSD     GXT           OANDA:XAGEUR          OANDA:XAGGBP          —
+//   XAGUSD     Tetrad        FOREXCOM:XAUUSD       OANDA:XAGEUR          OANDA:XAGGBP
+//   COPPER     All modes     FOREXCOM:XAUUSD       FOREXCOM:XAGUSD       —
+//   XAUEUR     Triad, GXT    FOREXCOM:XAUUSD       FOREXCOM:XAUGBP       —
+//   XAUEUR     Tetrad        FOREXCOM:XAUUSD       FOREXCOM:XAGUSD       FOREXCOM:XAUGBP
+//   XAUGBP     Triad, GXT    FOREXCOM:XAUUSD       FOREXCOM:XAUEUR       —
+//   XAUGBP     Tetrad        FOREXCOM:XAUUSD       FOREXCOM:XAGUSD       FOREXCOM:XAUEUR
+//   XAGEUR     Triad, GXT    FOREXCOM:XAGUSD       OANDA:XAGGBP          —
+//   XAGEUR     Tetrad        FOREXCOM:XAGUSD       FOREXCOM:XAUUSD       OANDA:XAGGBP
+//   XAGGBP     Triad, GXT    FOREXCOM:XAGUSD       OANDA:XAGEUR          —
+//   XAGGBP     Tetrad        FOREXCOM:XAGUSD       FOREXCOM:XAUUSD       OANDA:XAGEUR
+//   A cross-pair chart gives the same Triad and GXT result, because it is already a cross.
+//
+// FOREX FUTURES  (forex_futures) — all modes give the Triad branch
+//   Chart      Asset 2               Asset 3               Asset 4
+//   ---------  --------------------  --------------------  -------------------
+//   6E         CME:6B1!              TVC:DXY [inv]         —
+//   6B         CME:6E1!              TVC:DXY [inv]         —
+//   M6E        CME:M6B1!             TVC:DXY [inv]         —
+//   M6B        CME:M6E1!             TVC:DXY [inv]         —
+//
+// CAD FUTURES  (cad_futures) — all modes give the Triad branch
+//   Chart      Asset 2               Asset 3               Asset 4
+//   ---------  --------------------  --------------------  -------------------
+//   6C         FOREXCOM:USDCAD       TVC:DXY [inv]         —
+//   M6C        FOREXCOM:USDCAD       TVC:DXY [inv]         —
+//   6C moves against USDCAD and against DXY. Only Asset 3 gets the flag, because
+//   resolveTriad() reads pairing.invertTertiary and never pairing.invertSecondary.
+//   Invert Asset 2 in your indicator if your calculation needs it.
+//
+// ENERGY FUTURES  (energy_futures) — all modes give the Triad branch
+//   Chart      Asset 2               Asset 3               Asset 4
+//   ---------  --------------------  --------------------  -------------------
+//   CL, MCL    NYMEX:RB1!            NYMEX:HO1!            —
+//   RB, MRB    NYMEX:CL1!            NYMEX:HO1!            —
+//   HO, MHO    NYMEX:CL1!            NYMEX:RB1!            —
+//
+// TREASURY FUTURES  (treasury_futures) — all modes give the Triad branch
+//   Chart      Asset 2               Asset 3               Asset 4
+//   ---------  --------------------  --------------------  -------------------
+//   ZB         CBOT:ZF1!             CBOT:ZN1!             —
+//   ZF         CBOT:ZB1!             CBOT:ZN1!             —
+//   ZN         CBOT:ZB1!             CBOT:ZF1!             —
+//
+// CME CRYPTO FUTURES  (crypto_futures) — all modes give the Triad branch
+//   Chart      Asset 2               Asset 3               Asset 4
+//   ---------  --------------------  --------------------  -------------------
+//   BTC, MBT   CME:ETH1!             CRYPTOCAP:TOTAL3      —
+//   ETH, MET   CME:BTC1!             CRYPTOCAP:TOTAL3      —
+//
+// FOREX CFD  (forex_cfd) — preserved QT same-feed layer; EURUSD/GBPUSD expose a Tetrad
+//   Chart      Asset 2                  Asset 3                  Asset 4
+//   ---------  -----------------------  -----------------------  -------------------
+//   EURUSD     <chart feed>:GBPUSD      TVC:DXY [inv]            <chart feed>:AUDUSD
+//   GBPUSD     <chart feed>:EURUSD      TVC:DXY [inv]            <chart feed>:AUDUSD
+//   DXY        <chart feed>:EURUSD[inv] <chart feed>:GBPUSD[inv] —
+//   AUDUSD     <chart feed>:NZDUSD      <chart feed>:GBPUSD      —
+//   NZDUSD     <chart feed>:AUDUSD      <chart feed>:GBPUSD      —
+//   USDJPY     TVC:DXY                  CME:6J1! [inv]            —
+//   USDCHF     TVC:DXY                  CME:6S1! [inv]            —
+//   USDCAD     TVC:DXY                  CME:6C1! [inv]            —
+//   TVC DXY uses the FX feed fallback. DXY's two correlated legs are both inverted.
+// ENERGY CFD  (energy_cfd) — Triad only; Tetrad selection falls back to this Triad
+//   Chart      Asset 2                    Asset 3                    Asset 4
+//   ---------  -------------------------  -------------------------  -------------------
+//   USOIL      <chart feed>:UKOIL         <chart feed>:USDCAD [inv] —
+//   UKOIL      <chart feed>:USOIL         <chart feed>:USDCAD [inv] —
+//
+// CRYPTO  (crypto) — all modes give the Triad branch
+//   Chart      Asset 2               Asset 3               Asset 4
+//   ---------  --------------------  --------------------  -------------------
+//   BTC        BITGET:ETHUSDT.P      CRYPTOCAP:TOTAL3      —
+//   ETH        BITGET:BTCUSDT.P      CRYPTOCAP:TOTAL3      —
+//   SOL        BITGET:XRPUSDT.P      CRYPTOCAP:TOTAL3      —
+//   XRP        BITGET:SOLUSDT.P      CRYPTOCAP:TOTAL3      —
+//   ZEC        BITGET:BTCUSDT.P      BITGET:ETHUSDT.P      —
+//   DOGE       BITGET:BTCUSDT.P      BITGET:ETHUSDT.P      —
+//   ADA        BITGET:BTCUSDT.P      BITGET:ETHUSDT.P      —
+//   BNB        BITGET:BTCUSDT.P      BITGET:ETHUSDT.P      —
+//   TAO        BITGET:BTCUSDT.P      BITGET:ETHUSDT.P      —
+//   The five alt rows pair to the majors, not to each other. Asset 2 and Asset 3 stay
+//   on BITGET perpetual contracts on every exchange, so a BINANCE chart still gets
+//   BITGET legs.
+//
+// INDEX CFD  (index_cfd) — preserved QT CAPITALCOM triad; all modes give the Triad branch
+//   Chart aliases                 Asset 2             Asset 3             Asset 4
+//   ---------------------------  ------------------  ------------------  -------------------
+//   US100/NAS100/NDX/USTEC       CAPITALCOM:US500    CAPITALCOM:US30     —
+//   US500/SP500/SPX500           CAPITALCOM:US100    CAPITALCOM:US30     —
+//   US30/DJ30                    CAPITALCOM:US100    CAPITALCOM:US500    —
+//
+// EU STOCK INDICES  (eu_stocks) — dyad only, in every mode
+//   Chart      Asset 2               Asset 3               Asset 4
+//   ---------  --------------------  --------------------  -------------------
+//   GER40      FOREXCOM:EU50         (empty)               —
+//   EU50       FOREXCOM:GER40        (empty)               —
+//   These two symbols have no third leg. config.isTriadMode is false.
+//
+// UNKNOWN SYMBOLS  (fallback)
+//   config.detected is false, config.assetCategory is "fallback", and Asset 2 and
+//   Asset 3 are empty. config.primary keeps the chart ticker ID. Test config.detected
+//   before you request data with these fields.
+//
+// THREE RESULTS THE TABLES DO NOT SHOW
+//   1. config.primary is always syminfo.tickerid. The tables list Asset 2, Asset 3 and
+//      Asset 4 only. No mode replaces the chart symbol.
+//   2. Futures legs pass through ticker.modify(). The returned string carries the chart
+//      session and the backadjustment setting. It is not equal to the plain ticker above.
+//   3. Tetrad on a symbol with no fourth leg gives the Triad result. config.isQuadMode
+//      stays false, so test that field before you read config.quaternary.
+//
+
+// @function Main auto-detection entry point. Detects asset category and returns fully resolved config.
+// @param ticker The ticker string to check (typically syminfo.ticker)
+// @param tickerId The full ticker ID (typically syminfo.tickerid)
+// @param assetType The asset type (typically syminfo.type)
+// @param sessionType The session type for futures (typically syminfo.session)
+// @param useBackadjust Whether to apply back adjustment for futures session alignment
+// @param gxtMode When true, metals (Gold/Silver) use currency-cross triads (XAUEUR/XAUGBP, XAGEUR/XAGGBP) instead of standard metal correlations, and index futures use the NQ/ES/YM triad (RTY excluded). Copper and Russell fall back to default.
+// @param quadMode When true, metals use futures secondary + GXT cross-pairs as tertiary/quaternary (e.g., GC→SI/XAUEUR/XAUGBP). Takes priority over gxtMode for metals.
+// @returns AssetConfig with fully resolved assets, inversion flags, and detection status
+export resolveAssets(string ticker, string tickerId, string assetType, string sessionType, bool useBackadjust, bool gxtMode = false, bool quadMode = false) =>
+    AssetConfig config = AssetConfig.new()
+    AssetPairing pairing = AssetPairing.new()
+    bool found = false
+    string category = "unknown"
+    
+    // FUTURES: Route to appropriate detector
+    if assetType == "futures"
+        // Index Futures (GXT drops RTY for the NQ/ES/YM triad; Tetrad keeps the standard 4-leg table)
+        if str.contains(ticker, "NQ") or str.contains(ticker, "ES") or str.contains(ticker, "YM") or str.contains(ticker, "RTY") or str.contains(ticker, "MNQ") or str.contains(ticker, "MES") or str.contains(ticker, "MYM") or str.contains(ticker, "M2K")
+            if not quadMode and gxtMode
+                pairing := detectIndicesFuturesGxt(ticker)
+                if pairing.secondary != ""
+                    found := true
+                    category := "index_futures_gxt"
+            if not found
+                pairing := detectIndicesFutures(ticker)
+                if pairing.secondary != ""
+                    found := true
+                    category := "index_futures"
+        
+        // Metal Futures (Quad > GXT > Default priority for Gold/Silver)
+        if not found and (str.contains(ticker, "GC") or str.contains(ticker, "SI") or str.contains(ticker, "HG") or str.contains(ticker, "MGC") or str.contains(ticker, "SIL") or str.contains(ticker, "MHG"))
+            if quadMode
+                pairing := detectMetalsFuturesQuad(ticker)
+                if pairing.secondary != ""
+                    found := true
+                    category := "metal_futures_quad"
+            if not found and gxtMode
+                pairing := detectMetalsFuturesGxt(ticker)
+                if pairing.secondary != ""
+                    found := true
+                    category := "metal_futures_gxt"
+            if not found
+                pairing := detectMetalsFutures(ticker)
+                if pairing.secondary != ""
+                    found := true
+                    category := "metal_futures"
+        
+        // Forex Futures
+        if not found and (str.contains(ticker, "6E") or str.contains(ticker, "6B") or str.contains(ticker, "M6E") or str.contains(ticker, "M6B"))
+            pairing := detectForexFutures(ticker)
+            if pairing.secondary != ""
+                found := true
+                category := "forex_futures"
+        
+        // Energy Futures
+        if not found and (str.contains(ticker, "CL") or str.contains(ticker, "RB") or str.contains(ticker, "HO") or str.contains(ticker, "MCL") or str.contains(ticker, "MRB") or str.contains(ticker, "MHO"))
+            pairing := detectEnergyFutures(ticker)
+            if pairing.secondary != ""
+                found := true
+                category := "energy_futures"
+        
+        // Treasury Futures
+        if not found and (str.contains(ticker, "ZB") or str.contains(ticker, "ZF") or str.contains(ticker, "ZN"))
+            pairing := detectTreasuryFutures(ticker)
+            if pairing.secondary != ""
+                found := true
+                category := "treasury_futures"
+        
+        // CME Crypto Futures (BTC/ETH + micros)
+        if not found and (str.contains(ticker, "BTC") or str.contains(ticker, "ETH") or str.contains(ticker, "MBT") or str.contains(ticker, "MET"))
+            pairing := detectCryptoFutures(ticker)
+            if pairing.secondary != ""
+                found := true
+                category := "crypto_futures"
+        
+        // CAD Forex Futures (6C + micros)
+        if not found and (str.contains(ticker, "6C") or str.contains(ticker, "M6C"))
+            pairing := detectCADFutures(ticker)
+            if pairing.secondary != ""
+                found := true
+                category := "cad_futures"
+    
+    // NON-FUTURES: CFD / Crypto / Other
+    else
+        // Forex CFD
+        if f_is_fx_eurusd(f_symbol_only(ticker)) or f_is_fx_gbpusd(f_symbol_only(ticker)) or f_is_fx_dxy(f_symbol_only(ticker)) or f_is_fx_usdjpy(f_symbol_only(ticker)) or f_is_fx_usdchf(f_symbol_only(ticker)) or f_is_fx_usdcad(f_symbol_only(ticker)) or f_is_fx_audusd(f_symbol_only(ticker)) or f_is_fx_nzdusd(f_symbol_only(ticker))
+            pairing := detectForexCFD(ticker, tickerId)
+            if pairing.secondary != ""
+                found := true
+                category := "forex_cfd"
+        // Energy CFD
+        if not found and (f_is_energy_cfd_usoil(f_symbol_only(ticker)) or f_is_energy_cfd_ukoil(f_symbol_only(ticker)))
+            pairing := detectEnergyCFD(ticker, tickerId)
+            if pairing.secondary != ""
+                found := true
+                category := "energy_cfd"
+        // Crypto
+        if not found and (str.contains(ticker, "BTC") or str.contains(ticker, "ETH") or str.contains(ticker, "SOL") or str.contains(ticker, "XRP") or str.contains(ticker, "DOGE") or str.contains(ticker, "ADA") or str.contains(ticker, "BNB") or str.contains(ticker, "TAO") or str.contains(ticker, "ZEC"))
+            pairing := detectCrypto(ticker, tickerId)
+            if pairing.secondary != ""
+                found := true
+                category := "crypto"
+        
+        // Metals CFD (Quad > GXT > Default priority for XAUUSD/XAGUSD + cross-pairs)
+        if not found and (str.contains(ticker, "XAUUSD") or str.contains(ticker, "XAGUSD") or str.contains(ticker, "COPPER") or str.contains(ticker, "XAUEUR") or str.contains(ticker, "XAUGBP") or str.contains(ticker, "XAGEUR") or str.contains(ticker, "XAGGBP"))
+            if quadMode
+                pairing := detectMetalsCFDQuad(ticker, tickerId)
+                if pairing.secondary != ""
+                    found := true
+                    category := "metal_cfd_quad"
+            if not found and gxtMode
+                pairing := detectMetalsCFDGxt(ticker, tickerId)
+                if pairing.secondary != ""
+                    found := true
+                    category := "metal_cfd_gxt"
+            if not found
+                pairing := detectMetalsCFD(ticker, tickerId)
+                if pairing.secondary != ""
+                    found := true
+                    category := "metal_cfd"
+        
+        // Indices CFD
+        if not found and (f_is_index_cfd_us100(f_symbol_only(ticker)) or f_is_index_cfd_us500(f_symbol_only(ticker)) or f_is_index_cfd_us30(f_symbol_only(ticker)))
+            pairing := detectIndicesCFD(ticker, tickerId)
+            if pairing.secondary != ""
+                found := true
+                category := "index_cfd"
+        
+        // EU Stocks (Dyad)
+        if not found and (str.contains(ticker, "GER40") or str.contains(ticker, "EU50"))
+            pairing := detectEUStocks(ticker, tickerId)
+            if pairing.secondary != ""
+                found := true
+                category := "eu_stocks"
+    
+    // Apply fallback if not detected
+    if not found
+        pairing := getDefaultFallback(tickerId)
+        category := "fallback"
+    
+    // Determine triad vs dyad vs quad mode
+    // Only use quad resolution when caller explicitly requests it via quadMode
+    // This ensures triad behavior when quadMode is false, even if quaternary is populated
+    bool isTriad = pairing.tertiary != ""
+    bool isQuad = quadMode and pairing.quaternary != ""
+    
+    // Resolve final asset assignments with inversion
+    if isQuad
+        [primary, secondary, tertiary, quaternary, invSec, invTert, invQuat] = resolveQuad(tickerId, pairing)
+        
+        // Apply session modifier for futures
+        if assetType == "futures" and useBackadjust
+            secondary := applySessionModifierWithBackadjust(secondary, sessionType)
+            tertiary := applySessionModifierWithBackadjust(tertiary, sessionType)
+            quaternary := applySessionModifierWithBackadjust(quaternary, sessionType)
+        else if assetType == "futures"
+            secondary := applySessionModifierNoBackadjust(secondary, sessionType)
+            tertiary := applySessionModifierNoBackadjust(tertiary, sessionType)
+            quaternary := applySessionModifierNoBackadjust(quaternary, sessionType)
+        
+        config.primary := primary
+        config.secondary := secondary
+        config.tertiary := tertiary
+        config.quaternary := quaternary
+        config.invertSecondary := invSec
+        config.invertTertiary := invTert
+        config.invertQuaternary := invQuat
+    else if isTriad
+        [primary, secondary, tertiary, invSec, invTert] = resolveTriad(tickerId, pairing)
+        
+        // Apply session modifier for futures (backadjust is compile-time constant, so split logic)
+        if assetType == "futures" and useBackadjust
+            secondary := applySessionModifierWithBackadjust(secondary, sessionType)
+            tertiary := applySessionModifierWithBackadjust(tertiary, sessionType)
+        else if assetType == "futures"
+            secondary := applySessionModifierNoBackadjust(secondary, sessionType)
+            tertiary := applySessionModifierNoBackadjust(tertiary, sessionType)
+        
+        config.primary := primary
+        config.secondary := secondary
+        config.tertiary := tertiary
+        config.invertSecondary := invSec
+        config.invertTertiary := invTert
+    else
+        [primary, secondary, invSec] = resolveDyad(tickerId, pairing)
+        
+        // Apply session modifier for futures
+        if assetType == "futures" and useBackadjust
+            secondary := applySessionModifierWithBackadjust(secondary, sessionType)
+        else if assetType == "futures"
+            secondary := applySessionModifierNoBackadjust(secondary, sessionType)
+        
+        config.primary := primary
+        config.secondary := secondary
+        config.tertiary := ""
+        config.invertSecondary := invSec
+        config.invertTertiary := false
+    
+    config.detected := found
+    config.isDyadMode := found and pairing.secondary != "" and not isTriad and not isQuad
+    config.isTriadMode := isTriad
+    config.isTetradMode := isQuad
+    config.isQuadMode := isQuad
+    config.assetCategory := category
+    config.correlationMode := gxtMode ? "GXT" : "Classic"
+    config.correlationType := isQuad ? "Tetrad" : isTriad ? "Triad" : "Dyad"
+
+    f_apply_index_provider_policy(config, assetType, tickerId)
+
+// - - - - - - - - -
+// Simplified Entry Point (uses syminfo defaults)
+// - - - - - - - - -
+// Use resolveCurrentChart() for most indicators — it handles session and
+// backadjustment automatically. Use resolveAssets() only when you need
+// explicit control over backadjust (e.g., forceETH toggle in a strategy).
+
+// @function Simplified auto-detection using current chart's syminfo values
+// @param gxtMode When true, metals use currency-cross triads instead of standard metal correlations, and index futures use the NQ/ES/YM triad (RTY excluded)
+// @param quadMode When true, metals use futures secondary + GXT cross-pairs as tertiary/quaternary
+// @returns AssetConfig with fully resolved assets, inversion flags, and detection status
+export resolveCurrentChart(bool gxtMode = false, bool quadMode = false) =>
+    resolveAssets(syminfo.ticker, syminfo.tickerid, syminfo.type, syminfo.session, true, gxtMode, quadMode)
+
+// - - - - - - - - -
+// V16 Explicit Correlation Interface
+// - - - - - - - - -
+// Keeps resolveAssets()/resolveCurrentChart() backward compatible while exposing
+// GXT|Classic and Dyad|Triad|Tetrad as explicit consumer-facing modes.
+
+export resolveAssetsByCorrelation(string ticker, string tickerId, string assetType, string sessionType, bool useBackadjust, string correlationMode, string correlationType) =>
+    string normalizedMode = str.upper(correlationMode) == "GXT" ? "GXT" : "Classic"
+    string typeToken = str.upper(correlationType)
+    string normalizedType = typeToken == "DYAD" ? "Dyad" : typeToken == "TETRAD" ? "Tetrad" : "Triad"
+    bool gxtMode = normalizedMode == "GXT"
+    bool tetradMode = normalizedType == "Tetrad"
+    AssetConfig config = resolveAssets(ticker, tickerId, assetType, sessionType, useBackadjust, gxtMode, tetradMode)
+    if config.assetCategory == "cad_futures"
+        config.invertSecondary := true
+    if config.assetCategory == "forex_cfd" and f_is_fx_dxy(f_symbol_only(ticker))
+        config.invertSecondary := true
+    if normalizedType == "Dyad"
+        config.tertiary := ""
+        config.quaternary := ""
+        config.invertTertiary := false
+        config.invertQuaternary := false
+    else if normalizedType == "Triad"
+        config.quaternary := ""
+        config.invertQuaternary := false
+    bool hasSecondary = config.detected and config.secondary != ""
+    bool hasTertiary = hasSecondary and config.tertiary != ""
+    bool hasQuaternary = hasTertiary and config.quaternary != ""
+    config.isDyadMode := hasSecondary and not hasTertiary
+    config.isTriadMode := hasTertiary and not hasQuaternary
+    config.isTetradMode := hasQuaternary
+    config.isQuadMode := hasQuaternary
+    config.correlationMode := normalizedMode
+    config.correlationType := hasQuaternary ? "Tetrad" : hasTertiary ? "Triad" : "Dyad"
+    config
+
+export resolveCurrentChartByCorrelation(string correlationMode, string correlationType) =>
+    resolveAssetsByCorrelation(syminfo.ticker, syminfo.tickerid, syminfo.type, syminfo.session, true, correlationMode, correlationType)
