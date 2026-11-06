@@ -511,6 +511,7 @@ lq_pm_width = input.int(1, "Width", inline="lq_pmc", group=LQ_GRP_PDW, minval=1,
 lq_pm_eq_show  = input.bool(false, "PM EQ", inline="lq_pme", group=LQ_GRP_PDW, active=lq_show_pm)
 lq_pm_eq_color = input.color(#c98a5b, "", inline="lq_pme", group=LQ_GRP_PDW, active=lq_show_pm and lq_pm_eq_show)
 lq_pm_eq_style = input.string("Dotted", "", inline="lq_pme", group=LQ_GRP_PDW, options=["Solid", "Dashed", "Dotted"], active=lq_show_pm and lq_pm_eq_show)
+lq_level_len = input.int(60, "Levels Length (bars, 0 = full)", group=LQ_GRP_PDW, minval=0, tooltip="Key levels (PDH/PDL, PWH/PWL, PMH/PML, EQ and Day Open) draw this many bars back from the current bar instead of running all the way back to where the level formed. The level is never drawn before it formed. 0 = original full length.")
 
 // ============================================================================
 // SMT on chart — GXV SMT engine (HTF Profiler)
@@ -3250,6 +3251,7 @@ var float seq_c2X   = na    // protected extreme of the latest confirmed C2 (bul
 var bool  seq_c2Dead = false // the latest confirmed C2 was invalidated
 var array<int> seq_c2H = array.new<int>()   // last 10 confirmed C2s: open time (+ bull / - bear)
 var bool  seq_lastC2 = false // the candle on the chart has closed as a valid C2
+var float seq_c2Close = na   // close price of the valid C2 candle = where C3 opens (alert)
 var SeqSc seq_scF = SeqScNew()
 var SeqSc seq_scD = SeqScNew() // score of the C2 behind the candle on the chart
 var bool  seq_scHas = false
@@ -3392,6 +3394,7 @@ for k = 0 to 1
             seq_scHas  := true
             seq_lastC2 := true
             seq_c2T    := seq_dO
+            seq_c2Close := seq_dC   // the just-closed C2 candle's close, captured for the alert
             seq_c2X    := d == 1 ? seq_dL : seq_dH
             seq_c2Dead := false
             seq_c2H.unshift(d == 1 ? seq_dO : -seq_dO)
@@ -3497,6 +3500,25 @@ bool seq_c2Live = seq_bias != 0 and not seq_c2Dead and BiasOk(seq_bias)
 bool seq_c2Ok   = seq_c2Live and seq_dbias == seq_bias   // + the candle's C2 is the plan's C2
 bool seq_go   = not seq_classic and not seq_hi and seq_c2Ok and (not seq_c3_only_input or seq_dcnum == 3) and BiasOk(seq_dbias)
 bool seq_act  = seq_c2Ok and (seq_dcnum == 3 or seq_dcnum == 4) and not na(seq_E)
+// C2 candle closed: an HTF candle just closed as a valid C2 (panel "C2 ✓") — the close of C2 is the
+// start of C3. Fires once per C2 (keyed by its open time), the moment it confirms. Its close price is
+// where C3 opens. Create the alert with condition "C2 Candle Closed".
+var int c2_alert_O = na
+bool c2_closed = seq_lastC2 and not na(seq_c2T) and seq_c2T != c2_alert_O
+if c2_closed
+    c2_alert_O := seq_c2T
+// carry the C2 candle's close into the named alert (data-window plot, kept off the chart)
+plot(seq_c2Close, 'C2 Close Price', display = display.data_window)
+alertcondition(c2_closed, 'C2 Candle Closed', 'Boom°: HTF C2 candle closed · {{ticker}} {{interval}} · C2 close {{plot("C2 Close Price")}}')
+// C3 candle formed: the sequence advances to C3 on a standing C2 — the instant the sequence turns to
+// C3 (C2's close / C3's open), without waiting for C3 to close. Fires once per C3 (keyed by its open
+// time), carrying the C3 candle's open price. Create the alert with condition "C3 Candle Formed".
+var int c3_alert_O = na
+bool c3_formed = seq_c2Ok and seq_dcnum == 3 and not na(seq_dO) and seq_dO != c3_alert_O
+if c3_formed
+    c3_alert_O := seq_dO
+plot(seq_dOp, 'C3 Open Price', display = display.data_window)
+alertcondition(c3_formed, 'C3 Candle Formed', 'Boom°: HTF C3 candle formed · {{ticker}} {{interval}} · C3 open {{plot("C3 Open Price")}}')
 // the C2's plan and confluence text, once per bar (ledger + alerts)
 string seq_planT = SeqPlan(seq_E)
 string seq_tagT  = SeqTags(seq_scF, seq_ci)
@@ -3708,7 +3730,9 @@ if barstate.islast or barstate.isrealtime
                 if k == 0 or (p < 3 and (k == 1 or (lq_eqOn.get(p) and not na(q.eqt))))
                     float  lv = k == 0 ? q.h1 : k == 1 ? q.l1 : (q.h1 + q.l1) / 2.0
                     color  kc = eq ? lec.get(p) : lc.get(p)
-                    bin.lines.push(line.new(k == 0 ? q.h1t : k == 1 ? q.l1t : q.eqt, lv, time, lv, xloc = xloc.bar_time, color = kc, style = LineStyle(eq ? les.get(p) : lst.get(p)), width = lw.get(p)))
+                    int    x1o = k == 0 ? q.h1t : k == 1 ? q.l1t : q.eqt
+                    int    x1  = lq_level_len > 0 ? int(math.max(x1o, time - lq_level_len * timeframe.in_seconds() * 1000)) : x1o
+                    bin.lines.push(line.new(x1, lv, time, lv, xloc = xloc.bar_time, color = kc, style = LineStyle(eq ? les.get(p) : lst.get(p)), width = lw.get(p)))
                     if p < 3 or lq_tdo_show_label
                         bin.labels.push(label.new(time, lv, lnm.get(p) + (p == 3 ? '' : k == 0 ? 'H' : k == 1 ? 'L' : '-EQ'), xloc = xloc.bar_time, color = #00000000, textcolor = kc, style = p == 3 ? label.style_label_down : label.style_label_left, size = size.small, text_font_family = p == 3 ? font.family_monospace : font.family_default))
 
