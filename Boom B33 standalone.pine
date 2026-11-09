@@ -5512,7 +5512,7 @@ if barstate.islast and seq_show_input
     int    qp      = SeqPts(qf)
     [qg, qc]       = SeqGrade(qf, qp)
     int    qd      = seq_lastC2 ? seq_bias : c3 ? seq_dbias : seq_wD
-    string q_tx    = (qd == 1 ? '▲ ' : qd == -1 ? '▼ ' : '') + (q_c2 ? '' : '… ') + qg + (qf.f.get(0) ? ' ' + str.tostring(qp) + '%' : '')
+    string q_tx    = (qd == 1 ? '▲ ' : qd == -1 ? '▼ ' : '') + (q_c2 ? '' : '… ') + qg + ' ' + str.tostring(qp) + '%'
     [sg, sc]       = SeqGrade(seq_scD, SeqPts(seq_scD))
     string gs      = c3 and seq_scHas ? ' · ' + sg : ''
     bool   a_sw    = c2_ok and seq_a_sweep
