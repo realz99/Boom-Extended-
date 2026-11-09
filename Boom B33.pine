@@ -634,7 +634,9 @@ seq_bear_input                   = input.color(#c4616c, '', inline = 'seq_c3', g
 seq_cand_c3_input                = input.color(#7cc49a, 'Candle: C3', inline = 'seq_c4', group = group_seq, active = seq_show_input)
 seq_cand_other_input             = input.color(#2b3140, 'Other', inline = 'seq_c4', group = group_seq, active = seq_show_input, tooltip = 'LIVE CANDLE: C3 … C6 (Last candle) after a valid C2 close, then WAITING C2. C3–C6 that takes the C2 extreme against the bias → WAITING C2.')
 seq_adr_on                       = input.bool(true, 'ADR', inline = 'adr', group = group_seq, active = seq_show_input)
-seq_adr_len                      = input.int(14, 'Days', minval = 1, maxval = 100, inline = 'adr', group = group_seq, active = seq_show_input and seq_adr_on, tooltip = 'ADR row: average high-low of this many completed daily candles | today\'s range so far (CDR) as a share of it. Amber at 100%+.')
+seq_adr_len                      = input.int(14, 'Days', minval = 1, maxval = 100, inline = 'adr', group = group_seq, active = seq_adr_on)
+seq_adr_ln                       = input.bool(true, 'Lines', inline = 'adr', group = group_seq, active = seq_adr_on)
+seq_adr_col                      = input.color(#b2b5be, '', inline = 'adr', group = group_seq, active = seq_adr_on and seq_adr_ln, tooltip = 'ADR (module on / off): table row = average high-low of this many completed daily candles | today\'s range so far as a share of it (amber at 100%+).\nLines: ADR+ = today\'s low + ADR, ADR- = today\'s high - ADR, from the day\'s open: how far the day still reaches on a full average range.')
 seq_chk_input                    = input.bool(true, 'Score Checklist', group = group_seq, active = seq_show_input, tooltip = 'Show the C2 QUALITY checklist.\nCISD in C2 +75 · inside 75% of C1 +5 · POI +10 (the C2 extreme traded INTO a POI FVG: legs that start in an FVG are favoured) · SMT +5 · POI + SMT +5\nLOW 75–80 · HIGH 85–90 · 💥 95–100 · no CISD = ✗')
 seq_grace_input                  = input.bool(false, 'C2 CISD in C3', group = group_seq, active = seq_show_input and not seq_classic, tooltip = 'Accept the C2 CISD in the first 75% of C3 (1H: 45m, 4H: 3h).')
 mtf_fvg_input                    = input.bool(true, 'MTF FVG', inline = 'seq_fvg', group = group_seq, active = seq_show_input)
@@ -1853,6 +1855,9 @@ for p = 0 to 2
     if low <= q.l0
         q.l0  := low
         q.l0t := time
+// ADR: average range of the last seq_adr_len completed daily candles (the same D candle the key-level
+// tracker rolls on), from the D series so chart history does not matter; today = lq_per D (PDH/PDL tracker)
+float seq_adr = request.security(syminfo.tickerid, 'D', ta.sma(high - low, seq_adr_len)[1], lookahead = barmerge.lookahead_on)
 // Day Open: Midnight = True Day Open (TDO), 6 PM = the futures / forex session open (D OPEN)
 bool lq_dayIn = not na(time('', lq_day_open_mode == '6 PM' ? '1800-1801' : '0000-0001', lq_session_tz))
 if lq_dayIn and not lq_dayIn[1]
@@ -3746,6 +3751,12 @@ if barstate.islast or barstate.isrealtime
                     bin.lines.push(line.new(x1, lv, time, lv, xloc = xloc.bar_time, color = kc, style = LineStyle(eq ? les.get(p) : lst.get(p)), width = lw.get(p)))
                     if p < 3 or lq_tdo_show_label
                         bin.labels.push(label.new(time, lv, lnm.get(p) + (p == 3 ? '' : k == 0 ? 'H' : k == 1 ? 'L' : '-EQ'), xloc = xloc.bar_time, color = #00000000, textcolor = kc, style = p == 3 ? label.style_label_down : label.style_label_left, size = size.small, text_font_family = p == 3 ? font.family_monospace : font.family_default))
+    // [SSOT] ADR+ = today's low + ADR, ADR- = today's high - ADR: today = the D tracker (lq_per 0), from its open
+    if seq_adr_on and seq_adr_ln and seq_adr > 0
+        LqPer d = lq_per.get(0)
+        for [k, lv] in array.from(d.l0 + seq_adr, d.h0 - seq_adr)
+            bin.lines.push(line.new(d.s0, lv, bar_index, lv, color = seq_adr_col, style = line.style_dashed))
+            bin.labels.push(label.new(bar_index, lv, k == 0 ? 'ADR+' : 'ADR-', color = #00000000, textcolor = seq_adr_col, style = label.style_label_left, size = size.small))
 
 // C2 tag, each part from its one source: +PSP = the model candle's PSP flag, +SMT / +FVG = the C2's
 // score (the table's: SMT engine, and its extreme traded into a POI FVG)
@@ -3980,9 +3991,6 @@ color FILLC = #010203
 SeqStatus(bool prevDone, bool done, bool ok) =>
     [not ok ? seq_wait_input : done ? seq_done_input : prevDone ? seq_watch_input : seq_wait_input, not ok ? '-- ' : done ? '✓ ' : prevDone ? '◔ ' : '· ']
 
-// ADR: average range of the last seq_adr_len completed daily candles (the same D candle the key-level
-// tracker rolls on), from the D series so chart history does not matter; today = lq_per D (PDH/PDL tracker)
-float seq_adr = request.security(syminfo.tickerid, 'D', ta.sma(high - low, seq_adr_len)[1], lookahead = barmerge.lookahead_on)
 // 2 columns, narrow: SEQ · bias | live candle · ATR · FLIP · ADR · C2 grade · checklist · C3 lanes · EXEC · plan
 if barstate.islast and seq_show_input
     var table seq_tbl = table.new(dash_table_position(seq_vert_input, seq_horz_input), 2, 27, bgcolor = seq_row_bg_input, border_color = seq_lane_bg_input, border_width = 1, frame_color = seq_lane_bg_input, frame_width = 1)

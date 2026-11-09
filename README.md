@@ -13,7 +13,7 @@ Based on Boom° v4 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence a
 
 ## Build b27.1 — fixes (reviewed from an NR-Perf patch)
 
-- **ADR row** (toggle + days, default 14): `ADR | 655 · 62%` = average range of the last N completed daily candles · today's range so far as a share of it (amber at 100%+). Today's range comes from the key-level D tracker (same day as PDH/PDL).
+- **ADR row** (toggle + days, default 14): `ADR | 655 · 62%` = average range of the last N completed daily candles · today's range so far as a share of it (amber at 100%+). Today's range comes from the key-level D tracker (same day as PDH/PDL). **ADR+ / ADR- lines** (on by default): today's low + ADR / today's high - ADR, from the day's open.
 - **Trade R kept after break-even:** every R (TP2 / TP3, BE stop, EXIT) uses the risk taken at entry; the EXIT on a new C2 no longer measures against the new C2's stop.
 - **SMT score = confirmed SMT only,** dated by the SMT's own sweep (pivot B), so a C1 SMT that confirms later never counts for C2.
 - **Older C2 tags** are no longer rescored against today's POI / SMT state (no `+SMT` / `+FVG` on them).
