@@ -2143,6 +2143,8 @@ seq_bull_input                   = input.color(#26a69a, 'Bull / Bear', inline = 
 seq_bear_input                   = input.color(#c4616c, '', inline = 'seq_c3', group = group_seq, active = seq_show_input)
 seq_cand_c3_input                = input.color(#7cc49a, 'Candle: C3', inline = 'seq_c4', group = group_seq, active = seq_show_input)
 seq_cand_other_input             = input.color(#2b3140, 'Other', inline = 'seq_c4', group = group_seq, active = seq_show_input, tooltip = 'LIVE CANDLE: C3 … C6 (Last candle) after a valid C2 close, then WAITING C2. C3–C6 that takes the C2 extreme against the bias → WAITING C2.')
+seq_adr_on                       = input.bool(true, 'ADR', inline = 'adr', group = group_seq, active = seq_show_input)
+seq_adr_len                      = input.int(14, 'Days', minval = 1, maxval = 100, inline = 'adr', group = group_seq, active = seq_show_input and seq_adr_on, tooltip = 'ADR row: average high-low of this many completed daily candles | today\'s range so far (CDR) as a share of it. Amber at 100%+.')
 seq_chk_input                    = input.bool(true, 'Score Checklist', group = group_seq, active = seq_show_input, tooltip = 'Show the C2 QUALITY checklist.\nCISD in C2 +75 · inside 75% of C1 +5 · POI +10 (the C2 extreme traded INTO a POI FVG: legs that start in an FVG are favoured) · SMT +5 · POI + SMT +5\nLOW 75–80 · HIGH 85–90 · 💥 95–100 · no CISD = ✗')
 seq_grace_input                  = input.bool(false, 'C2 CISD in C3', group = group_seq, active = seq_show_input and not seq_classic, tooltip = 'Accept the C2 CISD in the first 75% of C3 (1H: 45m, 4H: 3h).')
 mtf_fvg_input                    = input.bool(true, 'MTF FVG', inline = 'seq_fvg', group = group_seq, active = seq_show_input)
@@ -5488,10 +5490,13 @@ color FILLC = #010203
 SeqStatus(bool prevDone, bool done, bool ok) =>
     [not ok ? seq_wait_input : done ? seq_done_input : prevDone ? seq_watch_input : seq_wait_input, not ok ? '-- ' : done ? '✓ ' : prevDone ? '◔ ' : '· ']
 
-// 2 columns, narrow: SEQ · bias | live candle · ATR · FLIP · C2 grade · checklist · C3 lanes · EXEC · plan
+// ADR: average range of the last seq_adr_len completed daily candles (the same D candle the key-level
+// tracker rolls on), from the D series so chart history does not matter; today = lq_per D (PDH/PDL tracker)
+float seq_adr = request.security(syminfo.tickerid, 'D', ta.sma(high - low, seq_adr_len)[1], lookahead = barmerge.lookahead_on)
+// 2 columns, narrow: SEQ · bias | live candle · ATR · FLIP · ADR · C2 grade · checklist · C3 lanes · EXEC · plan
 if barstate.islast and seq_show_input
-    var table seq_tbl = table.new(dash_table_position(seq_vert_input, seq_horz_input), 2, 26, bgcolor = seq_row_bg_input, border_color = seq_lane_bg_input, border_width = 1, frame_color = seq_lane_bg_input, frame_width = 1)
-    table.clear(seq_tbl, 0, 0, 1, 25)
+    var table seq_tbl = table.new(dash_table_position(seq_vert_input, seq_horz_input), 2, 27, bgcolor = seq_row_bg_input, border_color = seq_lane_bg_input, border_width = 1, frame_color = seq_lane_bg_input, frame_width = 1)
+    table.clear(seq_tbl, 0, 0, 1, 26)
     color hd = seq_head_bg_input
     color hx = seq_head_tx_input
     color rw = seq_row_bg_input
@@ -5561,6 +5566,10 @@ if barstate.islast and seq_show_input
     rows.push(SqRow.new('ATR', atrOk ? cc_col : wt, rw, not atrOk ? '—' : cc_trend ? '▲ UP' : '▼ DN', atrOk ? FILLC : wt, atrOk ? cc_col : rw))
     color flC = na(cc_flipPx) ? wt : cc_trend ? cc_bull : cc_bear
     rows.push(SqRow.new('FLIP', flC, rw, na(cc_flipPx) ? '—' : TbPx(cc_flipPx) + ' ' + SeqAlertT(cc_flipT), flC, rw))
+    // [SSOT] today's range = the key-level D tracker (lq_per 0), ADR = seq_adr
+    if seq_adr_on and seq_adr > 0
+        float cdr = (lq_per.get(0).h0 - lq_per.get(0).l0) / seq_adr * 100
+        rows.push(SqRow.new('ADR', wt, rw, TbPx(seq_adr) + ' · ' + str.tostring(cdr, '0') + '%', cdr >= 100 ? seq_watch_input : tx, rw))
     rows.push(SqRow.new('C2 ' + SeqAlertT(q_c2 ? seq_c2T : seq_dO), hx, hd, q_tx, FILLC, qc))
     if seq_chk_input
         for [i, w] in SEQ_W
