@@ -17,6 +17,7 @@ Based on Boom° v4 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence a
 - **SMT score = confirmed SMT only,** dated by the SMT's own sweep (pivot B), so a C1 SMT that confirms later never counts for C2.
 - **Older C2 tags** are no longer rescored against today's POI / SMT state (no `+SMT` / `+FVG` on them).
 - **POI requests** run on the Calculated Bars window.
+- **POI row as glyphs:** `4H▲★` (▲ BISI / ▼ SIBI, ★ leg origin), `⚠` = no POI data; the timeframe list is gone. One POI zone label (`SeqPoiZ`) for table, alerts, ledger and the FVG-bounce event.
 
 ## Build b27 — HTF rows, glyph table, leaner
 

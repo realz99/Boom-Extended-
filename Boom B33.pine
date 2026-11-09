@@ -3113,12 +3113,15 @@ string seq_poi_tf2    = seq_cl_one ? seq_dir_tf : seq_cl_low ? (seq_ms == 3600 ?
 string seq_poi_tf3    = seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : seq_cl_4h ? 'D' : seq_is_1h ? '240' : '15'
 string seq_poi_tf4    = seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : 'D'
 int    seq_poi_n      = seq_cl_one ? 1 : seq_classic ? 3 : 4
-string seq_poi_all    = seq_cl_one ? PanelLabel(seq_dir_tf) : seq_cl_low ? '15m/1H/4H' : seq_cl_4h ? '1H/4H/D' : '15m/1H/4H/D'
 if seq_hi or not seq_tf_ok
     seq_poi_tf1 := timeframe.period
     seq_poi_tf2 := timeframe.period
     seq_poi_tf3 := timeframe.period
     seq_poi_tf4 := timeframe.period
+// [SSOT] the POI timeframes in slot order, and a POI zone as text (TF + ▲ BISI / ▼ SIBI): the table,
+// the C2 tags (alerts / ledger), the FVG-bounce event and the chart's MTF FVG boxes all read these
+array<string> seq_poi_tfs = array.from(seq_poi_tf1, seq_poi_tf2, seq_poi_tf3, seq_poi_tf4)
+SeqPoiZ(int k, int d) => PanelLabel(seq_poi_tfs.get(k)) + (d == 1 ? '▲' : '▼')
 int    seq_gMs        = seq_grace_input and not seq_classic ? int(seq_ms * 750) : 0   // C2 CISD window: first 75% of C3
 bool seq_a_sweep = false
 bool seq_a_entry = false
@@ -3161,7 +3164,7 @@ var array<bool> seq_lnOk = array.from(true, true, true, true)   // A sweep, A en
 [pz3t, pz3b, pz3d, pz3z] = request.security(syminfo.tickerid, seq_poi_tf3, SeqZones(), lookahead = barmerge.lookahead_on, calc_bars_count = calc_bars_input)
 [pz4t, pz4b, pz4d, pz4z] = request.security(syminfo.tickerid, seq_poi_tf4, SeqZones(), lookahead = barmerge.lookahead_on, calc_bars_count = calc_bars_input)
 array<SeqZ> seq_poi = array.from(SeqZ.new(pz1t, pz1b, pz1d, pz1z), SeqZ.new(pz2t, pz2b, pz2d, pz2z), SeqZ.new(pz3t, pz3b, pz3d, pz3z), SeqZ.new(pz4t, pz4b, pz4d, pz4z))
-// a POI timeframe the platform returns no data for → 'platform err' on the POI row
+// a POI timeframe the platform returns no data for → ⚠ on the POI row
 bool seq_poiErr = false
 for [k, z] in seq_poi
     seq_poiErr := seq_poiErr or (k < seq_poi_n and na(z.top))
@@ -3324,16 +3327,17 @@ SeqGrade(SeqSc s, int p) =>
         c := seq_high_input
     [g, c]
 
-// POI detail: the zone the C2 extreme traded into (TF + BISI / SIBI), else 'platform err' (no POI data)
+// POI detail (table glyphs): the zone the C2 extreme traded into, TF + ▲ BISI / ▼ SIBI (+★ leg origin),
+// else ⚠ when a POI timeframe returns no data
 SeqPoiTxt(SeqSc s) =>
     string h = ''
     if s.pTf >= 0
-        h := PanelLabel(array.from(seq_poi_tf1, seq_poi_tf2, seq_poi_tf3, seq_poi_tf4).get(s.pTf)) + (s.pDir == 1 ? ' BISI' : ' SIBI') + (s.org ? '★' : '')
-    h == '' and seq_poiErr ? 'platform err' : h
+        h := SeqPoiZ(s.pTf, s.pDir) + (s.org ? '★' : '')
+    h == '' and seq_poiErr ? '⚠' : h
 // confluence of a C2, each from its one source: FVG = the POI zone its extreme traded into, SMT
 // = the SMT engine, PSP = the model candle's PSP flag (the C2+PSP label)
 SeqTags(SeqSc s, int ci) =>
-    string t = (s.pTf >= 0 ? ' · FVG ' + PanelLabel(array.from(seq_poi_tf1, seq_poi_tf2, seq_poi_tf3, seq_poi_tf4).get(s.pTf)) + (s.pDir == 1 ? ' BISI' : ' SIBI') : '') + (s.f.get(3) ? ' · SMT' : '')
+    string t = (s.pTf >= 0 ? ' · FVG ' + SeqPoiZ(s.pTf, s.pDir) : '') + (s.f.get(3) ? ' · SMT' : '')
     if ci >= 0 and ci < htf.candles.size()
         if htf.candles.get(ci).psp
             t += ' · PSP'
@@ -3628,7 +3632,7 @@ if barstate.isconfirmed and seq_c2Ok and seq_dcnum >= 3 and not seq_hi
                 if na(fbT) and z.dir.get(i) == seq_bias and z.t.get(i) != nz(fb_k, -1) and (seq_bias == 1 ? low <= zt and close > zt : high >= zb and close < zb)
                     fbT  := z.t.get(i)
                     fbPx := seq_bias == 1 ? zt : zb
-                    fbTf := PanelLabel(array.from(seq_poi_tf1, seq_poi_tf2, seq_poi_tf3, seq_poi_tf4).get(k)) + (seq_bias == 1 ? ' BISI' : ' SIBI')
+                    fbTf := SeqPoiZ(k, seq_bias)
     if not na(fbT)
         fb_k := fbT
         LedgerAdd(seq_c2T, seq_bias == 1, seq_watch_input, 'FVG BOUNCE ' + fbTf, fbPx, 'Wick into the ' + fbTf + ', close back out' + seq_planT)
@@ -4052,7 +4056,7 @@ if barstate.islast and seq_show_input
         for [i, w] in SEQ_W
             bool   on  = SeqRowOn(i)
             bool   ok  = on and qf.f.get(i)
-            string det = i == 0 and q_c2 and not na(seq_E) ? TbPx(seq_E) + ' ' + seq_EG : i == 2 ? (ok ? SeqPoiTxt(qf) : seq_poi_all) : ''
+            string det = i == 0 and q_c2 and not na(seq_E) ? TbPx(seq_E) + ' ' + seq_EG : i == 2 ? SeqPoiTxt(qf) : ''
             rows.push(SqRow.new((not on ? '· ' : ok ? '✓ ' : '✗ ') + SEQ_LBL.get(i) + (i == 0 ? ' ' + PanelLabel(seq_c2_exec_tf) : ''), ok ? seq_done_input : wt, rw,
                  (det == '' ? '' : det + ' ') + (on ? '+' + str.tostring(w) : '--'), ok ? tx : wt, rw))
     if not seq_classic
@@ -4124,7 +4128,7 @@ if barstate.islast and ld_show_input
 
 // ── MTF FVG: the POI zones the C2 score reads, on the chart (no second FVG engine) ──
 if barstate.islast and mtf_fvg_input and seq_tf_ok and not seq_hi
-    array<string> ptf = array.from(seq_poi_tf1, seq_poi_tf2, seq_poi_tf3, seq_poi_tf4)
+    array<string> ptf = seq_poi_tfs
     for [k, z] in seq_poi
         string tf = ptf.get(k)
         if k < seq_poi_n and ptf.indexof(tf) == k and not na(z.top)
