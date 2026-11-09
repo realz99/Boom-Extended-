@@ -2089,7 +2089,7 @@ type SmtLiveSlot
 
 var array<SmtRangeState> smt_range_states = array.new<SmtRangeState>()
 var array<SmtEvent> smt_events = array.new<SmtEvent>()
-// Sequence score: time of the latest bullish [0] / bearish [1] SMT event detected
+// Sequence score: sweep time (pivot B) of the latest CONFIRMED bullish [0] / bearish [1] SMT event
 var array<int> seq_smt_mark = array.new<int>(2)
 var array<SmtLiveSlot> smt_live_slots = array.new<SmtLiveSlot>()
 
@@ -2259,8 +2259,8 @@ f_smt_build_sweeps(SmtRangeState st, bool inverse) =>
     bool lowSweep = ready and (inverse ? f_smt_high_swept(lowB, lowA) : f_smt_low_swept(lowB, lowA))
     SmtSweepState.new(ready, highSweep, lowSweep, highA, highB, lowA, lowB, highTimeA, highTimeB, lowTimeA, lowTimeB, highBarA, highBarB, lowBarA, lowBarB)
 
-f_smt_xor(bool first, bool second) =>
-    (first and not second) or (not first and second)
+f_smt_xor(bool first, bool other) =>
+    (first and not other) or (not first and other)
 
 // Pure divergence truth: exactly one synchronized market sweeps corresponding liquidity.
 f_smt_resolve_pair_state(SmtSweepState mainSweep, SmtSweepState pairSweep) =>
@@ -2341,6 +2341,8 @@ f_smt_finalize_live_slot(int slot, int currentCycle) =>
             if not na(event)
                 if event.state == SMT_EVENT_LIVE
                     event.state := SMT_EVENT_CONFIRMED
+                    int mi = event.dir == SMT_DIR_BULL ? 0 : 1
+                    seq_smt_mark.set(mi, math.max(nz(seq_smt_mark.get(mi), event.pivotBTime), event.pivotBTime))
                     event.projectA := false
                     event.projectB := false
                     event.bypassed := false
@@ -2362,7 +2364,6 @@ f_smt_sync_live_candidate(bool valid, int cycleKey, int previousCycleKey, int ra
             bool bodyBlocked = f_smt_body_filter_applies(rank) and f_smt_body_intersects(b1, b2, y1, y2)
             SmtEvent event = SmtEvent.new(eventId, rank, pairSlot, dir, cycleKey, previousCycleKey, y1, y2, t1, t2, b1, b2, f_smt_structure_type(dir == SMT_DIR_BULL, y1, y2), SMT_EVENT_LIVE, bodyBlocked, na, na, false, false, false)
             array.unshift(smt_events, event)
-            seq_smt_mark.set(dir == SMT_DIR_BULL ? 0 : 1, time)
             live.active := true
             live.eventId := eventId
             live.cycleKey := cycleKey
@@ -3155,10 +3156,10 @@ int    seq_bW   = time(seq_bwtf)
 int    seq_bWc  = time_close(seq_bwtf)
 var array<bool> seq_lnOk = array.from(true, true, true, true)   // A sweep, A entry, B sweep, B entry tracked
 // POI zones from each POI timeframe's own candles (closed candles only → no repaint)
-[pz1t, pz1b, pz1d, pz1z] = request.security(syminfo.tickerid, seq_poi_tf1, SeqZones(), lookahead = barmerge.lookahead_on)
-[pz2t, pz2b, pz2d, pz2z] = request.security(syminfo.tickerid, seq_poi_tf2, SeqZones(), lookahead = barmerge.lookahead_on)
-[pz3t, pz3b, pz3d, pz3z] = request.security(syminfo.tickerid, seq_poi_tf3, SeqZones(), lookahead = barmerge.lookahead_on)
-[pz4t, pz4b, pz4d, pz4z] = request.security(syminfo.tickerid, seq_poi_tf4, SeqZones(), lookahead = barmerge.lookahead_on)
+[pz1t, pz1b, pz1d, pz1z] = request.security(syminfo.tickerid, seq_poi_tf1, SeqZones(), lookahead = barmerge.lookahead_on, calc_bars_count = calc_bars_input)
+[pz2t, pz2b, pz2d, pz2z] = request.security(syminfo.tickerid, seq_poi_tf2, SeqZones(), lookahead = barmerge.lookahead_on, calc_bars_count = calc_bars_input)
+[pz3t, pz3b, pz3d, pz3z] = request.security(syminfo.tickerid, seq_poi_tf3, SeqZones(), lookahead = barmerge.lookahead_on, calc_bars_count = calc_bars_input)
+[pz4t, pz4b, pz4d, pz4z] = request.security(syminfo.tickerid, seq_poi_tf4, SeqZones(), lookahead = barmerge.lookahead_on, calc_bars_count = calc_bars_input)
 array<SeqZ> seq_poi = array.from(SeqZ.new(pz1t, pz1b, pz1d, pz1z), SeqZ.new(pz2t, pz2b, pz2d, pz2z), SeqZ.new(pz3t, pz3b, pz3d, pz3z), SeqZ.new(pz4t, pz4b, pz4d, pz4z))
 // a POI timeframe the platform returns no data for → 'platform err' on the POI row
 bool seq_poiErr = false
@@ -3642,6 +3643,7 @@ var float tr_E   = na
 var float tr_SL  = na
 var int   tr_tp  = 0
 var int   tr_ET  = na   // the fill: time of the lane CISD that opened the trade
+var float tr_rk  = na   // risk at entry (fill → stop): every R of the trade, also after break-even
 // [SSOT] the lanes' own gate (seq_go): no trade on an invalidated C2
 bool tr_in = seq_go and (seq_a_entry or seq_b_entry)
 if not tr_on and tr_in and nz(tr_key, -1) != seq_c2T and not na(seq_SL)
@@ -3652,9 +3654,10 @@ if not tr_on and tr_in and nz(tr_key, -1) != seq_c2T and not na(seq_SL)
     tr_E   := ta ? seq_a_px : seq_b_px
     tr_ET  := ta ? seq_a_eT : seq_b_eT
     tr_SL  := seq_SL
+    tr_rk  := math.abs(tr_E - seq_SL)
     tr_tp  := 0
 else if tr_on
-    float  risk = math.abs(tr_E - seq_SL)
+    float  risk = tr_rk
     // the trade ends: a new C2 formed (EXIT at the close) or the stop / break-even stop was hit; one
     // ledger row + one alert for both
     bool nx = seq_c2T != tr_key
@@ -3748,7 +3751,7 @@ C2Tag(CandleSet cs, Setup s, int ci) =>
         // [SSOT] the table's C2 carries the table's own score (taken at its close); other C2s are scored the same way
         SeqSc sc = seq_scF
         if k2.o_time != seq_c2T or (s.is_bullish ? 1 : -1) != seq_bias
-            sc := SeqScore(s.is_bullish ? 1 : -1, k1.h, k1.l, k1.o_time, k2.h, k2.l, k2.o_time)
+            sc := SeqScNew()   // older C2s: no tags (today's POI / SMT state would mislabel them)
         t += (sc.f.get(3) ? '+SMT' : '') + (sc.pTf >= 0 ? '+FVG' : '')
     t
 

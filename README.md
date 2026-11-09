@@ -11,6 +11,13 @@ Based on Boom° v4 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence a
 
 `Boom B33 standalone.pine` is the same build with both libraries pasted in (no `import` lines): `Gregorius_XV/GXVAssetCorrelationUtils/1` as `AC_*` and `Gregorius_XV/GXVUtils/12` as `QTU_*`. Paste it as one indicator. The library sources are in `libs/` (MPL 2.0; GXVAssetCorrelationUtils © fstarcapital, fork by Gregorius_XV; GXVUtils by Gregorius_XV).
 
+## Build b27.1 — fixes (reviewed from an NR-Perf patch)
+
+- **Trade R kept after break-even:** every R (TP2 / TP3, BE stop, EXIT) uses the risk taken at entry; the EXIT on a new C2 no longer measures against the new C2's stop.
+- **SMT score = confirmed SMT only,** dated by the SMT's own sweep (pivot B), so a C1 SMT that confirms later never counts for C2.
+- **Older C2 tags** are no longer rescored against today's POI / SMT state (no `+SMT` / `+FVG` on them).
+- **POI requests** run on the Calculated Bars window.
+
 ## Build b27 — HTF rows, glyph table, leaner
 
 - **HTF C2 rows** at the bottom of the table: one per HTF panel, `TF ▲/▼ | stage`, text in the direction colour on black (no fill). The model panel reads the sequence engine (`XC2` in the Invalid colour); the other panels read the same sweep as their C-labels.
