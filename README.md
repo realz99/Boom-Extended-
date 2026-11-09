@@ -11,6 +11,15 @@ Based on Boom° v4 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence a
 
 `Boom B33 standalone.pine` is the same build with both libraries pasted in (no `import` lines): `Gregorius_XV/GXVAssetCorrelationUtils/1` as `AC_*` and `Gregorius_XV/GXVUtils/12` as `QTU_*`. Paste it as one indicator. The library sources are in `libs/` (MPL 2.0; GXVAssetCorrelationUtils © fstarcapital, fork by Gregorius_XV; GXVUtils by Gregorius_XV).
 
+## Build b27 — HTF rows, glyph table, leaner
+
+- **HTF C2 rows** at the bottom of the table: one per HTF panel, `TF ▲/▼ | stage`, text in the direction colour on black (no fill). The model panel reads the sequence engine (`XC2` in the Invalid colour); the other panels read the same sweep as their C-labels.
+- **One sweep rule:** `PanelSweepAt` is the single C1 → C2 sweep test; the panel sweep lines, panel C-labels and the HTF rows all read it.
+- **Glyph table:** bias row is `▲ / ▼` only; grade BOOM is `💥`, INVALID a red `✗`; mode Boom = `💥`; date row `dd/MM HH:mm` from the signal entry time.
+- **FVG markers** on the HTF panels (small `FVG` at each gap, same detection as the zones).
+- **SMT pairing leaned:** MNQ → MES and NAS100 CFD → MES kept; NQ → ES and `/MNQ` · `/NQ` feeds dropped.
+- **Removed:** the Risk-Reward overlay and the single HTF badge (token budget).
+
 ## Build b26 — rebased on Boom° v4
 
 Athena's update, all in: SMT fill removed again (C2 score = CISD 75 · 75% rule 5 · POI 10 · SMT 5 · POI+SMT 5); POI zones come from each POI timeframe's own candles again (`request.security`), so our v3 `na(cT)` fix is no longer needed; the POI row shows `platform err` when a POI timeframe returns no data; pairing: MNQ ↔ MES and NQ ↔ ES futures (also `/MNQ` / `/NQ` NinjaTrader-style feeds, + MYM / YM in Triad), NAS100 CFDs ↔ MES. Everything of ours kept (C5 / C6, palette, whole-number table prices, ★ POI origin, trade management, ledger, alerts).

@@ -3,7 +3,7 @@
 
 //@version=6
 
-// Boom° B33# · build b26 (rebased on Boom° v4)
+// Boom° B33# · build b27 (rebased on Boom° v4)
 indicator('Boom° B33# standalone', shorttitle = 'Boom° B33#', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 
 // ============================================================================
@@ -1793,7 +1793,7 @@ string group_label              = "Label Settings  ━━━━━━━━━�
 alerts_enabled_input            = input.bool(true, 'Alerts?', group=group_general, tooltip='To turn on the alerts, follow these steps:\n\n1) Make sure that the Alerts? toggle is ON.\n2) Right-click on the indicator on your chart.\n3) Click Add Alert on this indicator.\n4) Choose the Alert Name and confirm by clicking Create.\n\nNOTE: if you change any Settings, delete and re-create the alerts!')
 settings.sweep_history          := input.int(4, 'History        ', minval=0, group=group_general, inline='history')
 settings.sweep_visible_only     := input.bool(true, '', tooltip='Number of historical setups to show:\n\n☑ ON: Setups on visible HTF candles always shown. This count adds older setups that scrolled away.\n\n☐ OFF: Only show this many setups total.', inline='history', group=group_general)
-seq_mode_input                  = input.string('Boom', 'Sequence', options=['Boom', 'Classic'], group=group_general, tooltip='Boom: fixed model. 1m chart → 1H, other charts below 4H → 4H.\n• C2 valid = C2 + LTF CISD (1H → 5m, 4H → 15m)\n• C3 SETUP lanes: C1 sweep → entry CISD (1H: 15m → 3m / 1m, 4H: 1H → 5m, 30m → 3m)\n• POI: 15m/1H/4H/D\n• Alerts: C2 close + C3 sweep / entry\n\nClassic: model = Fractal pairing.\n• C2 valid = C2 + CISD on the Fractal LTF\n• No C3 SETUP lanes\n• POI by pairing (15m–1H model 15m/1H/4H, 4H 1H/4H/D, D/W/M own TF)\n• Alerts: C2 close only\n\nAbove a 1H chart: no C3 lanes; C2 QUALITY = CISD (+ SMT).')
+seq_mode_input                  = input.string('Boom', 'Sequence', options=['Boom', 'Classic'], group=group_general, tooltip='Boom: fixed model (1m→1H, else 4H). C2 = C2 + LTF CISD; C3 lanes = C1 sweep → entry CISD; POI 15m/1H/4H/D; alerts C2 close + C3. Classic: Fractal pairing, C2 = C2 + Fractal-LTF CISD, no C3 lanes, POI by pairing, alerts C2 close. Above 1H: no C3 lanes, C2 QUALITY = CISD (+ SMT).')
 bool seq_classic                = seq_mode_input == 'Classic'
 fractal_mode_input              = input.string('Automatic','Fractal', options=['Automatic', 'Custom', '1m-15m', '3m-30m', '5m-1H', '15m-4H', '1H-1D', '4H-1W', '1D-1M'], group=group_general, active=seq_classic, tooltip='Classic only. LTF-HTF pairing of the model.\nAutomatic: chart TF → next HTF.\nCustom: the two timeframes below.')
 custom_ltf_input                = input.timeframe('5', 'Custom Fractal  ', inline='custom_tf', group=group_general, active=seq_classic and fractal_mode_input == 'Custom')
@@ -1802,7 +1802,7 @@ settings.bias                   := input.string('Neutral', 'Bias', options=['Neu
 
 // Alerts (Sequence engine)
 string group_alerts             = "Alerts  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-alert_fmt                        = input.string('Text', 'Format', options = ['Text', 'JSON'], group=group_alerts, active=alerts_enabled_input, tooltip='Every alert is one event, action first: BUY / SELL SETUP (limit at the CISD line) · ARMED (lane sweep) · BUY / SELL NOW (lane entry) · WATCH (FVG bounce) · TAKE TP1-3 (move SL to break-even after TP1) · STOPPED / STOPPED AT BREAK-EVEN · CLOSE NOW (a new C2). Each carries price, SL, and TP1-3 + RR1 where they apply.\nJSON for a webhook / execution bridge: {event, side, symbol, tf, price, sl, tp1, tp2, tp3, rr1, id, info}; a setup\'s entry, targets and exit share its id. Create one TradingView alert: Any alert() function call.')
+alert_fmt                        = input.string('Text', 'Format', options = ['Text', 'JSON'], group=group_alerts, active=alerts_enabled_input, tooltip='One event per alert, action first: SETUP · ARMED · NOW · WATCH · TAKE TP1-3 · STOPPED · CLOSE. Each carries price, SL, TP1-3 + RR1. JSON = a webhook payload {event, side, symbol, tf, price, sl, tp1-3, rr1, id, info}. Create one alert: Any alert() function call.')
 alert_c2_input                   = input.bool(true, 'C2 Closed + LTF CISD', group=group_alerts, active=alerts_enabled_input, tooltip='Valid C2 close (C2 + its LTF CISD), also when its CISD confirms in C3. Classic + Boom.')
 alert_c1_input                   = input.bool(true, 'C3: C1 Sweep', group=group_alerts, active=alerts_enabled_input and not seq_classic, tooltip='Boom only. C1 sweep inside C3: 1H model 15m, 4H model 1H / 30m.')
 alert_tp_input                   = input.bool(true, 'TP hit', group=group_alerts, active=alerts_enabled_input and not seq_classic, inline='al_tr')
@@ -1870,7 +1870,7 @@ pnl2_tf_input                  = input.timeframe('240', '', inline = 'pnl2', gro
 pnl2_count_input               = input.int(6, '', minval = 1, maxval = 60, inline = 'pnl2', group = group_htf, active = not hide_candles_input)
 pnl3_show_input                = input.bool(true, 'HTF3', inline = 'pnl3', group = group_htf, active = not hide_candles_input)
 pnl3_tf_input                  = input.timeframe('1D', '', inline = 'pnl3', group = group_htf, active = not pnl_auto_input and not hide_candles_input)
-pnl3_count_input               = input.int(6, '', minval = 1, maxval = 60, inline = 'pnl3', group = group_htf, active = not hide_candles_input, tooltip = 'The candle count of each panel applies whether Auto HTF is on or off. A panel shows only when its timeframe is higher than the chart. Candle times, HTF label and remaining time follow the Label Settings.\nThe panel whose timeframe equals the Fractal HTF hosts the model (sweep lines, HTF EQ, panel C-labels) and shows at least 4 candles.')
+pnl3_count_input               = input.int(6, '', minval = 1, maxval = 60, inline = 'pnl3', group = group_htf, active = not hide_candles_input, tooltip = 'Candle count per HTF panel (Auto HTF or manual). A panel shows only above the chart TF. The panel matching the Fractal HTF hosts the model and shows at least 4.')
 settings.offset                := input.int(10, 'Offset           ', minval = 1, group = group_htf,inline='Offset',active = not hide_candles_input)
 pnl_gap_input                  = input.int(6, 'Gap', minval = 1, maxval = 50, group = group_htf, inline='Offset', active = not hide_candles_input, tooltip = 'Bars between the HTF panels.')
 settings.bull_body             := input.color(#26a69a, 'Body            ', inline = 'body', group = group_htf,active = not hide_candles_input)
@@ -1923,10 +1923,10 @@ settings.c2_size                := input.string(size.small, '', options=[size.ti
 settings.show_c2_lbl            := input.bool(true, 'C2', inline='c2', group=group_sweep)
 settings.show_c3_lbl            := input.bool(true, 'C3', inline='c2', group=group_sweep)
 settings.show_c4_lbl            := input.bool(true, 'C4+', inline='c2', group=group_sweep)
-c_last_input                    = input.int(6, 'Last', minval = 4, maxval = 6, inline='c2', group=group_sweep, tooltip='Highest candle a setup is carried to. 4 = the original model (zones C3 + C4). 5 / 6: each new HTF candle keeps the zone and opens the next one (C5, C6: the previous candle mid to its open) unless the stage went xC (traded beyond the previous candle extreme); IC-CISD runs through them. The HTF panel C-labels and the table candle count run to it too (the table to C5 at least).')
+c_last_input                    = input.int(6, 'Last', minval = 4, maxval = 6, inline='c2', group=group_sweep, tooltip='Highest candle a setup is carried to. 4 = C3 + C4. 5 / 6: each new HTF candle keeps the zone and opens the next (C5, C6) unless the stage went xC. IC-CISD runs through them.')
 int seq_cLast                   = math.max(5, c_last_input)
 c_lbl_loc_input                 = input.string('Both', 'C-Labels On', options=['Chart', 'Panel', 'Both'], inline='c_lbl_loc', group=group_sweep, tooltip='Chart: C2 / C3 / C4 labels on price (as before).\nPanel: C1 / C2 / C3 / C4 on the HTF panel that hosts the Fractal model (latest formation only, Profiler style).\nBoth: chart + panel.\nThe C2 / C3 / C4 toggles apply to both places (C1 follows C2).')
-c_lbl_latest_input              = input.bool(true, 'Chart: Latest Formation Only', inline='c_lbl_latest', group=group_sweep, active = c_lbl_loc_input != 'Panel', tooltip='On: the chart shows the C2 / C3 / C4 labels of the latest formation only (the same one labelled on the model panel), so older setups no longer stack extra C2 / C3 / C4 labels or C3 / C4 entry-zone boxes.\nOff: every setup kept by History shows its labels and entry-zone boxes (previous behaviour).\nThe HTF1 / HTF3 panel labels never draw on chart candles.')
+c_lbl_latest_input              = input.bool(true, 'Chart: Latest Formation Only', inline='c_lbl_latest', group=group_sweep, active = c_lbl_loc_input != 'Panel', tooltip='On: the chart shows the C2 / C3 / C4 labels + entry zones of the latest formation only. Off: every setup kept by History shows them.')
 c_lbl_bg_input                  = input.color(color.new(#000000, 25), 'Label BG', inline='c_lbl_loc', group=group_sweep, tooltip='Backing behind the chart C2 / C3 / C4 / xC2 and CISD labels so they stay readable over candles.')
 pnl_other_clbl_input            = input.bool(true, 'C1–C4 on Other Panels', inline='c_lbl_other', group=group_sweep, active = c_lbl_loc_input != 'Chart', tooltip='On / off for the C1–C4 labels on the HTF panels that do not host the Fractal model. The model panel follows C-Labels On.')
 pnl_clbl_conf                   = input.string('Confirmed', 'Panel C-Labels', options=['Live', 'Confirmed'], inline='c_lbl_mode', group=group_sweep, active = c_lbl_loc_input != 'Chart', tooltip='HTF panels. Live: C2 on the sweep.\nConfirmed: model panel = C2 confirmed by the table (●); if C3–C6 takes its extreme → live sweep.') == 'Confirmed'
@@ -2021,7 +2021,7 @@ lq_pm_width = input.int(1, "Width", inline="lq_pmc", group=LQ_GRP_PDW, minval=1,
 lq_pm_eq_show  = input.bool(false, "PM EQ", inline="lq_pme", group=LQ_GRP_PDW, active=lq_show_pm)
 lq_pm_eq_color = input.color(#c98a5b, "", inline="lq_pme", group=LQ_GRP_PDW, active=lq_show_pm and lq_pm_eq_show)
 lq_pm_eq_style = input.string("Dotted", "", inline="lq_pme", group=LQ_GRP_PDW, options=["Solid", "Dashed", "Dotted"], active=lq_show_pm and lq_pm_eq_show)
-lq_level_len = input.int(60, "Levels Length (bars, 0 = full)", group=LQ_GRP_PDW, minval=0, tooltip="Key levels (PDH/PDL, PWH/PWL, PMH/PML, EQ and Day Open) draw this many bars back from the current bar instead of running all the way back to where the level formed. The level is never drawn before it formed. 0 = original full length.")
+lq_level_len = input.int(60, "Levels Length (bars, 0 = full)", group=LQ_GRP_PDW, minval=0, tooltip="Key levels draw this many bars back instead of all the way to where they formed (never before they formed). 0 = full length.")
 
 // ============================================================================
 // SMT on chart — GXV SMT engine (HTF Profiler)
@@ -2033,7 +2033,7 @@ string group_smt_htf            = group_smt_ranks
 string group_smt_style          = group_smt
 string group_smt_pairs          = group_smt
 
-smt_correlation_mode            = input.string("Classic", "Correlation Mode", options=["Classic", "Manual"], group=group_smt_pairs, tooltip="Classic: the GXV AssetCorrelationUtils resolver picks the pairs for the chart symbol. Exception: MNQ futures pair with MES and NQ with ES, also on /MNQ, /NQ feeds (+ MYM / YM in Triad); NAS100 (Capital.com, Pepperstone, FXCM, FOREXCOM) pairs with MES.\nManual: use Pair 1 / Pair 2 below.\nThe two pairs feed the chart SMTs and the panel SMT / PSP (2 data requests).")
+smt_correlation_mode            = input.string("Classic", "Correlation Mode", options=["Classic", "Manual"], group=group_smt_pairs, tooltip="Classic: the GXV resolver picks pairs for the chart symbol (MNQ and NAS100 CFDs → MES). Manual: use Pair 1 / Pair 2 below. The pairs feed the chart SMTs and panel SMT / PSP.")
 smt_correlation_type            = input.string("Triad", "Correlation Type", options=["Dyad", "Triad"], group=group_smt_pairs, active=smt_correlation_mode != "Manual", tooltip="Dyad = chart + 1 pair. Triad = chart + 2 pairs.")
 gold_on1                        = input.bool(true, 'Gold 1', inline='gold1', group=group_smt_pairs, active=smt_correlation_mode != 'Manual')
 gold_s1                         = input.symbol('PEPPERSTONE:XAGUSD', '', inline='gold1', group=group_smt_pairs, active=smt_correlation_mode != 'Manual' and gold_on1, tooltip='Gold charts (XAU…): the first two ticked assets are SMT pair 1 and pair 2 (the engine compares two). Correlation Type Triad uses both, Dyad the first. Manual mode ignores these.')
@@ -2143,7 +2143,7 @@ seq_bull_input                   = input.color(#26a69a, 'Bull / Bear', inline = 
 seq_bear_input                   = input.color(#c4616c, '', inline = 'seq_c3', group = group_seq, active = seq_show_input)
 seq_cand_c3_input                = input.color(#7cc49a, 'Candle: C3', inline = 'seq_c4', group = group_seq, active = seq_show_input)
 seq_cand_other_input             = input.color(#2b3140, 'Other', inline = 'seq_c4', group = group_seq, active = seq_show_input, tooltip = 'LIVE CANDLE: C3 … C6 (Last candle) after a valid C2 close, then WAITING C2. C3–C6 that takes the C2 extreme against the bias → WAITING C2.')
-seq_chk_input                    = input.bool(true, 'Score Checklist', group = group_seq, active = seq_show_input, tooltip = 'Show the C2 QUALITY checklist.\nCISD in C2 +75 · inside 75% of C1 +5 · POI +10 (the C2 extreme traded INTO a POI FVG: legs that start in an FVG are favoured) · SMT +5 · POI + SMT +5\nLOW 75–80 · HIGH 85–90 · BOOM 95–100 · no CISD = INVALID')
+seq_chk_input                    = input.bool(true, 'Score Checklist', group = group_seq, active = seq_show_input, tooltip = 'Show the C2 QUALITY checklist.\nCISD in C2 +75 · inside 75% of C1 +5 · POI +10 (the C2 extreme traded INTO a POI FVG: legs that start in an FVG are favoured) · SMT +5 · POI + SMT +5\nLOW 75–80 · HIGH 85–90 · 💥 95–100 · no CISD = ✗')
 seq_grace_input                  = input.bool(false, 'C2 CISD in C3', group = group_seq, active = seq_show_input and not seq_classic, tooltip = 'Accept the C2 CISD in the first 75% of C3 (1H: 45m, 4H: 3h).')
 mtf_fvg_input                    = input.bool(true, 'MTF FVG', inline = 'seq_fvg', group = group_seq, active = seq_show_input)
 mtf_fvg_max                      = input.int(3, '', minval = 1, maxval = 15, inline = 'seq_fvg', group = group_seq, active = seq_show_input and mtf_fvg_input, tooltip = 'On the chart: the POI FVGs the C2 score reads (1H model 1H / 15m / 4H / D, 4H model 4H / 1H / D): per timeframe the zones nearest to price, both sides (price inside a zone = nearest). A zone leaves when a candle of its own timeframe wicks fully through it. Same zones as the POI row: no second FVG engine.')
@@ -2160,7 +2160,7 @@ seq_inv_input                    = input.color(#c4616c, 'Invalid', inline = 'seq
 // ============================================================================
 string group_perf               = 'Performance'
 bool calculate_on_close         = input.bool(true, 'Calculate on Close?', tooltip='When enabled, live setup detection only runs when LTF candles close (better performance).', group = group_perf)
-int calc_bars_input             = input.int(1000, 'Calculated Bars', minval = 100, maxval = 5000, group = group_perf, tooltip = 'HTF Profiler approach: the model, IC-CISD and HTF panels only run on the most recent bars.\nEach feature extends the window just enough to fill its HTF candles (capped at 5000 bars). Lower = faster, higher = more history.\nThe on-chart SMT families run on the full history, as in the Profiler (each family is gated by chart timeframe).')
+int calc_bars_input             = input.int(1000, 'Calculated Bars', minval = 100, maxval = 5000, group = group_perf, tooltip = 'The model, IC-CISD and HTF panels run only on the most recent bars (capped 5000). Lower = faster, higher = more history. On-chart SMT families run full history.')
 
 const int PERF_HTF_MAX_BARS     = 5000
 int chart_sec                   = timeframe.in_seconds()
@@ -2960,8 +2960,10 @@ DrawPanelFvgs(array<Candle> arr, string tf) =>
             int fd = FvgDir(c1.h, c1.l, c3.h, c3.l)
             if valid and fd == 1
                 bin.boxes.push(box.new(c2.candle_right, c3.l, fvg_right, c1.h, color_transparent, 1, bgcolor = color.new(htf_bull_fvg_color, 90)))
+                bin.labels.push(label.new(c2.wick_x, (c3.l + c1.h) / 2, 'FVG', xloc = xloc.bar_index, color = color_transparent, textcolor = htf_bull_fvg_color, style = label.style_label_center, size = size.tiny))
             if valid and fd == -1
                 bin.boxes.push(box.new(c2.candle_right, c1.l, fvg_right, c3.h, color_transparent, 1, bgcolor = color.new(htf_bear_fvg_color, 90)))
+                bin.labels.push(label.new(c2.wick_x, (c1.l + c3.h) / 2, 'FVG', xloc = xloc.bar_index, color = color_transparent, textcolor = htf_bear_fvg_color, style = label.style_label_center, size = size.tiny))
     0
 
 // SMT lines between consecutive panel candles
@@ -3069,33 +3071,37 @@ CollectExtraCandle(array<Candle> arr, bool is_new, int max_count, string tf) =>
         c.c_idx := bar_index
     arr
 
-// C1 → C2 sweeps on a preview panel (same lines as the model panel): C2 takes C1's high (low)
-// and closes back below (above) it. Hidden once a newer candle trades beyond C2's extreme.
-// The forming candle shows a live sweep only while 'Show live setup' is on.
+// [SSOT] C1 → C2 sweep at index i of a panel: C2 takes C1's high (low) and closes back below (above)
+// it, bias-filtered, still standing (no newer candle beyond C2's extreme); the forming candle only with
+// 'Show live setup'. → [bear, bull]. Panel sweep lines, panel C-labels and the table's HTF rows read it.
+PanelSweepAt(array<Candle> arr, int i) =>
+    Candle c2 = arr.get(i)
+    Candle c1 = arr.get(i + 1)
+    bool ok = i > 0 or settings.sweep_live
+    bool bear = ok and c2.h > c1.h and c2.c < c1.h and (settings.bias == 'Neutral' or settings.bias == 'Bearish')
+    bool bull = ok and c2.l < c1.l and c2.c > c1.l and (settings.bias == 'Neutral' or settings.bias == 'Bullish')
+    if i > 0 and (bear or bull)
+        for k = 0 to i - 1
+            Candle nw = arr.get(k)
+            bear := bear and not (nw.h > c2.h)
+            bull := bull and not (nw.l < c2.l)
+    [bear, bull]
+
+// C1 → C2 sweep lines on a preview panel (same lines as the model panel)
 DrawPanelSweeps(array<Candle> arr, int x_start) =>
     int n = arr.size()
     if settings.sweep_show and not settings.hide_setups and n >= 2
         int step = settings.width + 1
         string st = LineStyle(settings.sweep_style)
         for i = 0 to n - 2
-            Candle c2 = arr.get(i)
-            Candle c1 = arr.get(i + 1)
-            bool bear = c2.h > c1.h and c2.c < c1.h
-            bool bull = c2.l < c1.l and c2.c > c1.l
-            bool allowed = i > 0 or settings.sweep_live
-            if allowed and (bear or bull)
-                bool bear_alive = bear
-                bool bull_alive = bull
-                if i > 0
-                    for k = 0 to i - 1
-                        Candle nw = arr.get(k)
-                        bear_alive := bear_alive and not (nw.h > c2.h)
-                        bull_alive := bull_alive and not (nw.l < c2.l)
+            [bear, bull] = PanelSweepAt(arr, i)
+            if bear or bull
+                Candle c1 = arr.get(i + 1)
                 int c1_wick = x_start + step * (n - 1 - (i + 1)) + int(settings.width / 2)
                 int c2_right = x_start + step * (n - 1 - i) + settings.width
-                if bear_alive and (settings.bias == 'Neutral' or settings.bias == 'Bearish')
+                if bear
                     bin.lines.push(line.new(c1_wick, c1.h, c2_right, c1.h, xloc = xloc.bar_index, color = settings.sweep_color, style = st, width = settings.sweep_size))
-                if bull_alive and (settings.bias == 'Neutral' or settings.bias == 'Bullish')
+                if bull
                     bin.lines.push(line.new(c1_wick, c1.l, c2_right, c1.l, xloc = xloc.bar_index, color = settings.sweep_color, style = st, width = settings.sweep_size))
     0
 
@@ -3197,26 +3203,29 @@ PanelCLabelsAt(array<Candle> arr, int best, bool bull, bool dot) =>
 // panels that do not host the model.
 var array<int> NO_HIST = array.new<int>()
 // hist: confirmed C2s (open time, + bull / - bear), hMs = their candle length → the ● dot on a labelled C2
-DrawPanelCLabelsPreview(array<Candle> arr, bool on, array<int> hist, int hMs, bool fBull, int force) =>
+// [SSOT] latest PanelSweepAt of a panel: [C2 index (0 = forming, -1 = none), bull]. Panel C-labels
+// and the table's HTF rows both read it.
+PanelPick(array<Candle> arr) =>
+    int best = -1
+    bool best_bull = false
     int n = arr.size()
-    if c_lbl_panel and on and not settings.hide_setups and n >= 2
+    if n >= 2
+        for i = 0 to n - 2
+            [bear, bull] = PanelSweepAt(arr, i)
+            if bear or bull
+                best := i
+                best_bull := bull and bear ? arr.get(i).c > arr.get(i).o : bull
+                break
+    [best, best_bull]
+
+DrawPanelCLabelsPreview(array<Candle> arr, bool on, array<int> hist, int hMs, bool fBull, int force) =>
+    if c_lbl_panel and on and not settings.hide_setups and arr.size() >= 2
         int best = force
         bool best_bull = fBull
         if force < 0
-            for i = 0 to n - 2
-                Candle c2 = arr.get(i)
-                Candle c1 = arr.get(i + 1)
-                bool bear = c2.h > c1.h and c2.c < c1.h and (settings.bias == 'Neutral' or settings.bias == 'Bearish')
-                bool bull = c2.l < c1.l and c2.c > c1.l and (settings.bias == 'Neutral' or settings.bias == 'Bullish')
-                if i > 0
-                    for k = 0 to i - 1
-                        Candle nw = arr.get(k)
-                        bear := bear and not (nw.h > c2.h)
-                        bull := bull and not (nw.l < c2.l)
-                if (i > 0 or settings.sweep_live) and (bear or bull)
-                    best := i
-                    best_bull := bull and bear ? c2.c > c2.o : bull
-                    break
+            [pb, pu] = PanelPick(arr)
+            best := pb
+            best_bull := pu
         bool dot = false
         if best >= 0
             int ot = arr.get(best).o_time
@@ -3443,22 +3452,15 @@ csym := corr_base_ok ? corr_cfg.secondary : ""
 tsym3 := corr_has_tertiary ? corr_cfg.tertiary : ""
 corr_inv1 := corr_base_ok ? corr_cfg.invertSecondary : false
 corr_inv2 := corr_has_tertiary ? corr_cfg.invertTertiary : false
-// Pairing override (Classic mode): MNQ futures pair with MES and NQ with ES (CME on TradingView, '/MNQ' / '/NQ'
-// on NinjaTrader feeds, same prefix); the NAS100 CFDs of Capital.com, Pepperstone, FXCM and FOREXCOM track the
-// same Nasdaq-100 price, so they pair with MES (pair 2 = MYM / YM when Correlation Type is Triad).
-bool   nq_slash   = str.startswith(syminfo.ticker, "/")
-string nq_root    = nq_slash ? str.substring(syminfo.ticker, 1) : syminfo.root
-bool   nq_fut     = nq_slash or str.startswith(syminfo.prefix, "CME")
-string nq_px      = str.length(syminfo.prefix) > 0 ? syminfo.prefix + ":" : ""
-bool nq_mes_cfd = syminfo.ticker == "NAS100" and (syminfo.prefix == "CAPITALCOM" or syminfo.prefix == "PEPPERSTONE" or syminfo.prefix == "FXCM" or syminfo.prefix == "FOREXCOM")
-bool nq_mes_fut = nq_fut and nq_root == "MNQ"
-bool nq_es_fut  = nq_fut and nq_root == "NQ"
-if nq_mes_cfd or nq_mes_fut or nq_es_fut
+// Pairing override (Classic mode): MNQ (CME) and the NAS100 CFDs of Capital.com, Pepperstone, FXCM
+// and FOREXCOM pair with MES (pair 2 = MYM when Correlation Type is Triad).
+bool nq_mes = (syminfo.root == "MNQ" and str.startswith(syminfo.prefix, "CME")) or (syminfo.ticker == "NAS100" and (syminfo.prefix == "CAPITALCOM" or syminfo.prefix == "PEPPERSTONE" or syminfo.prefix == "FXCM" or syminfo.prefix == "FOREXCOM"))
+if nq_mes
     corr_base_ok := true
-    csym := nq_slash ? nq_px + (nq_es_fut ? "/ES" : "/MES") : nq_es_fut ? "CME_MINI:ES1!" : "CME_MINI:MES1!"
+    csym := "CME_MINI:MES1!"
     corr_inv1 := false
     corr_has_tertiary := corr_type_pair2
-    tsym3 := not corr_has_tertiary ? "" : nq_slash ? nq_px + (nq_es_fut ? "/YM" : "/MYM") : nq_es_fut ? "CBOT_MINI:YM1!" : "CBOT_MINI:MYM1!"
+    tsym3 := corr_has_tertiary ? "CBOT_MINI:MYM1!" : ""
     corr_inv2 := false
 // MES chart: pair with MNQ1! (CME) and/or the NAS100 CFD of the chosen broker (SMT: Asset Pair Resolver)
 bool mes_chart = syminfo.root == "MES" and str.startswith(syminfo.prefix, "CME")
@@ -4821,10 +4823,10 @@ SeqGrade(SeqSc s, int p) =>
     string g = 'LOW'
     color  c = seq_low_input
     if not s.f.get(0)
-        g := 'INVALID'
+        g := '✗'
         c := seq_inv_input
     else if p >= SEQ_BOOM
-        g := 'BOOM'
+        g := '💥'
         c := seq_boom_input
     else if p >= SEQ_HIGH
         g := 'HIGH'
@@ -5400,7 +5402,7 @@ f_smt_project_events()
 //   Downtrend: near the lower band = bear colour, sliding toward the upper band = transition colour
 // A close beyond a band flips the trend and re-centres the channel on the source.
 string group_cc = "Candle Colour (ATR trend channel)  ━━━━━━━━━━━━━━━━━━━━"
-cc_show  = input.bool(true, 'Colour candles', group = group_cc, tooltip = "Colours the chart candles by where price sits inside an ATR channel, by trend. Bull = strong in an uptrend, Bear = strong in a downtrend, Transition = drifting toward the band that would flip the trend. The table's ATR row shows the trend, FLIP the last flip. Adapted from 'ATR Trend Channel Signals' © BigBeluga (CC BY-NC-SA 4.0).")
+cc_show  = input.bool(true, 'Colour candles', group = group_cc, tooltip = "Colours chart candles by where price sits in an ATR channel, by trend. The table ATR row shows trend, FLIP the last flip. Adapted from 'ATR Trend Channel Signals' © BigBeluga (CC BY-NC-SA 4.0).")
 cc_len   = input.int(100, 'ATR Length', minval = 1, group = group_cc, inline = 'cc1')
 cc_mult  = input.float(2.5, 'x', minval = 0.1, step = 0.1, group = group_cc, inline = 'cc1')
 cc_src   = input.source(hl2, 'Source', group = group_cc, inline = 'cc1')
@@ -5481,8 +5483,8 @@ SeqStatus(bool prevDone, bool done, bool ok) =>
 
 // 2 columns, narrow: SEQ · bias | live candle · ATR · FLIP · C2 grade · checklist · C3 lanes · EXEC · plan
 if barstate.islast and seq_show_input
-    var table seq_tbl = table.new(dash_table_position(seq_vert_input, seq_horz_input), 2, 23, bgcolor = seq_row_bg_input, border_color = seq_lane_bg_input, border_width = 1, frame_color = seq_lane_bg_input, frame_width = 1)
-    table.clear(seq_tbl, 0, 0, 1, 22)
+    var table seq_tbl = table.new(dash_table_position(seq_vert_input, seq_horz_input), 2, 26, bgcolor = seq_row_bg_input, border_color = seq_lane_bg_input, border_width = 1, frame_color = seq_lane_bg_input, frame_width = 1)
+    table.clear(seq_tbl, 0, 0, 1, 25)
     color hd = seq_head_bg_input
     color hx = seq_head_tx_input
     color rw = seq_row_bg_input
@@ -5492,7 +5494,7 @@ if barstate.islast and seq_show_input
     bool   c3      = seq_dcnum == 3 and seq_c2Ok
     bool   c2_ok   = seq_go   // [SSOT] the lanes' gate: same as their alerts and the trade
     color  bias_bg = seq_bias == 1 ? seq_bull_input : seq_bias == -1 ? seq_bear_input : ln
-    string bias_tx = seq_bias == 1 ? '▲ BULL' : seq_bias == -1 ? '▼ BEAR' : '— NO C2'
+    string bias_tx = seq_bias == 1 ? '▲' : seq_bias == -1 ? '▼' : '—'
     string arrow   = seq_dbias == 1 ? '▲ ' : seq_dbias == -1 ? '▼ ' : ''
     // live candle: C2 ✓ = closed valid, then C3 … C6 (up to 'Last' candle, min C5); XC2 = C3+ took the C2 extreme
     string cand_tx = seq_lastC2 ? 'C2 ✓' : c3 ? 'C3' : seq_dBrk ? 'XC2' : seq_dcnum > 3 and seq_dcnum <= seq_cLast ? 'C' + str.tostring(seq_dcnum) : 'WAIT C2'
@@ -5543,7 +5545,7 @@ if barstate.islast and seq_show_input
     array<SqRow> rows = array.new<SqRow>()
     // vanilla dashboard, folded in: asset · alignment (LTF / model TF), then date · mode
     rows.push(SqRow.new('◆ ' + syminfo.ticker, hx, hd, PanelLabel(seq_classic ? seq_c2_exec_tf : timeframe.period) + ' / ' + PanelLabel(seq_dir_tf), hx, hd))
-    rows.push(SqRow.new(str.format_time(timenow, 'EEE, MMM dd yyyy', 'America/New_York'), wt, rw, seq_classic ? 'Classic' : 'Boom', wt, rw))
+    rows.push(SqRow.new(str.format_time(nz(seq_EET, nz(seq_c2T, timenow)), 'dd/MM HH:mm', 'America/New_York'), wt, rw, seq_classic ? 'Classic' : '💥', wt, rw))
     // the SMT pairs every SMT / PSP read compares against (ⁱ = inverse)
     rows.push(SqRow.new('SMT', wt, rw, smt_pair == '' ? 'off' : SymShort(smt_pair) + (corr_inv1 ? 'ⁱ' : '') + (smt_pair2 == '' ? '' : '·' + SymShort(smt_pair2) + (corr_inv2 ? 'ⁱ' : '')), smt_pair == '' ? wt : tx, rw))
     rows.push(SqRow.new(bias_tx, FILLC, bias_bg, cand_tx, FILLC, cand_bg))
@@ -5583,6 +5585,20 @@ if barstate.islast and seq_show_input
     bool h2 = tr_on and tr_tp >= 2
     rows.push(SqRow.new('TP1 ' + (pl ? TbPx(SeqTp(0)) : '—'), h1 ? FILLC : pl ? seq_done_input : wt, h1 ? seq_done_input : rw,
          'TP2 ' + (pl ? TbPx(SeqTp(1)) : '—'), h2 ? FILLC : pl ? seq_done_input : wt, h2 ? seq_done_input : rw))
+    // [SSOT] latest C2 per HTF: model TF = the sequence engine (xC2 = invalid); other panels = PanelPick
+    // (the same sweep as their C-labels): TF ▲/▼ | live stage, text in the direction colour on the header bg
+    color mk = seq_bias == 0 ? wt : bias_bg
+    SqRow mr = SqRow.new(PanelLabel(seq_dir_tf) + ' ' + bias_tx, mk, hd, cand_tx, seq_dBrk ? seq_inv_input : mk, hd)
+    for p = 1 to 3
+        if p == 1 ? pnl_a1_ok : p == 2 ? pnl_a2_ok : pnl_a3_ok
+            if p == pnl_a_match
+                rows.push(mr)
+            else
+                [pb, pu] = PanelPick(p == 1 ? pnl_a1 : p == 2 ? pnl_a2 : pnl_a3)
+                color pc = pb < 0 ? wt : pu ? seq_bull_input : seq_bear_input
+                rows.push(SqRow.new(PanelLabel(p == 1 ? pnl_a1_tf : p == 2 ? pnl_a2_tf : pnl_a3_tf) + (pb < 0 ? '' : pu ? ' ▲' : ' ▼'), pc, hd, pb < 0 ? '–' : 'C' + str.tostring(pb + 2), pc, hd))
+    if pnl_a_match == 0
+        rows.push(mr)
 
     // chart timeframe the sequence cannot run on: header + why (same table, same render)
     if not seq_tf_ok
