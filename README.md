@@ -20,6 +20,12 @@ Based on Boom° v4 by athenav135 (MPL 2.0). Same Fractal Model / Boom sequence a
 - **POI requests** run on the Calculated Bars window.
 - **POI row as glyphs:** `4H▲★` (▲ BISI / ▼ SIBI, ★ leg origin), `⚠` = no POI data; the timeframe list is gone. One POI zone label (`SeqPoiZ`) for table, alerts, ledger and the FVG-bounce event.
 
+## Build b27.2 — FVG / POI non-repaint fixes
+
+- **No POI timeframe below the chart:** a lower-timeframe `request.security` returns the first intrabar on history and the last one live, so it repainted; such a slot now reads the chart's own candles (e.g. the 15m slot on a 1H chart).
+- **Session / weekend voids are not FVGs:** one gap rule (`FvgNoVoid`) for the panel FVGs and the POI zones; intraday steps longer than two candles break the FVG; D and above always pass.
+- **FVG bounce:** not on a bar that pierces the zone, nor on a zone the current POI candle already filled (SeqZones drops it only at the POI close); once per zone, keyed by POI slot + confirm time (1H and 4H zones confirmed at the same hour no longer collide, in the ledger or the alert).
+
 ## Build b27 — HTF rows, glyph table, leaner
 
 - **HTF C2 rows** at the bottom of the table: one per HTF panel, `TF ▲/▼ | stage`, text in the direction colour on black (no fill). The model panel reads the sequence engine (`XC2` in the Invalid colour); the other panels read the same sweep as their C-labels.

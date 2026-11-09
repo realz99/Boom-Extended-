@@ -2271,6 +2271,10 @@ LbC(int off) =>
 // [SSOT] one FVG rule: candle 1 (oldest) and candle 3 (newest) leave a gap. 1 = BISI, -1 = SIBI
 FvgDir(float h1, float l1, float h3, float l3) =>
     l3 > h1 ? 1 : h3 < l1 ? -1 : 0
+// [SSOT] the three FVG candles are back to back (open times t1 < t2 < t3, candle length ms): intraday, no
+// step longer than two candles, so a session / weekend void is not an FVG; D and above always pass
+FvgNoVoid(int t1, int t2, int t3, int ms) =>
+    na(ms) or ms >= 86400000 or (t2 - t1 <= ms * 2 and t3 - t2 <= ms * 2)
 // Projection anchors of a setup from its CISD (bull: high / body top at the CISD candle, body bottom at
 // the extreme candle; bear mirrored); na beyond the 5000-bar buffer
 SetProj(Setup setup, bool bull) =>
@@ -2958,7 +2962,7 @@ DrawPanelFvgs(array<Candle> arr, string tf) =>
             Candle c1 = arr.get(i + 2)
             bool chrono = c1.o_idx < c2.o_idx and c2.o_idx < c3.o_idx
             bool adjacent = not na(c1.c_idx) and not na(c2.c_idx) and c2.o_idx - c1.c_idx <= 1 and c3.o_idx - c2.c_idx <= 1
-            bool no_void = na(tf_ms) or (c2.o_time - c1.o_time <= tf_ms * 2 and c3.o_time - c2.o_time <= tf_ms * 2)
+            bool no_void = FvgNoVoid(c1.o_time, c2.o_time, c3.o_time, tf_ms)
             bool valid = chrono and adjacent and no_void
             int fvg_right = i == 0 ? c3.candle_left : c3.candle_right
             int fd = FvgDir(c1.h, c1.l, c3.h, c3.l)
@@ -4330,7 +4334,7 @@ SeqZones() =>
         for i = n - 1 to 0
             if z.dir.get(i) == 1 ? l1 < z.bot.get(i) : h1 > z.top.get(i)
                 z.drop(i)
-    int  gd = FvgDir(h3, l3, h1, l1)
+    int  gd = FvgNoVoid(time[3], time[2], time[1], timeframe.in_seconds() * 1000) ? FvgDir(h3, l3, h1, l1) : 0
     bool bu = gd == 1
     bool be = gd == -1
     if bu or be
@@ -4625,16 +4629,17 @@ bool   seq_hi         = timeframe.in_seconds() > 3600   // chart above 1H: no C3
 bool   seq_cl_low     = seq_classic and (seq_ms == 900 or seq_ms == 1800 or seq_ms == 3600)
 bool   seq_cl_4h      = seq_classic and seq_ms == 14400
 bool   seq_cl_one     = seq_classic and not seq_cl_low and not seq_cl_4h
-string seq_poi_tf1    = seq_cl_one ? seq_dir_tf : seq_cl_low ? (seq_ms == 3600 ? '60' : '15') : seq_cl_4h ? '240' : seq_is_1h ? '60' : '240'
-string seq_poi_tf2    = seq_cl_one ? seq_dir_tf : seq_cl_low ? (seq_ms == 3600 ? '15' : '60') : seq_cl_4h ? '60' : seq_is_1h ? '15' : '60'
-string seq_poi_tf3    = seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : seq_cl_4h ? 'D' : seq_is_1h ? '240' : '15'
-string seq_poi_tf4    = seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : 'D'
+// chart above 1H or not below the model: every POI slot = the chart. A slot below the chart reads the
+// chart's own candles instead: a lower-timeframe request.security returns the FIRST intrabar on
+// history and the LAST one live (TradingView docs), so it repaints; at / above the chart, SeqZones'
+// closed [1] candle + lookahead_on is the same on history and live.
+PoiTf(string tf) => timeframe.in_seconds(tf) < timeframe.in_seconds() ? timeframe.period : tf
+bool   seq_poi_ch     = seq_hi or not seq_tf_ok
+string seq_poi_tf1    = seq_poi_ch ? timeframe.period : PoiTf(seq_cl_one ? seq_dir_tf : seq_cl_low ? (seq_ms == 3600 ? '60' : '15') : seq_cl_4h ? '240' : seq_is_1h ? '60' : '240')
+string seq_poi_tf2    = seq_poi_ch ? timeframe.period : PoiTf(seq_cl_one ? seq_dir_tf : seq_cl_low ? (seq_ms == 3600 ? '15' : '60') : seq_cl_4h ? '60' : seq_is_1h ? '15' : '60')
+string seq_poi_tf3    = seq_poi_ch ? timeframe.period : PoiTf(seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : seq_cl_4h ? 'D' : seq_is_1h ? '240' : '15')
+string seq_poi_tf4    = seq_poi_ch ? timeframe.period : PoiTf(seq_cl_one ? seq_dir_tf : seq_cl_low ? '240' : 'D')
 int    seq_poi_n      = seq_cl_one ? 1 : seq_classic ? 3 : 4
-if seq_hi or not seq_tf_ok
-    seq_poi_tf1 := timeframe.period
-    seq_poi_tf2 := timeframe.period
-    seq_poi_tf3 := timeframe.period
-    seq_poi_tf4 := timeframe.period
 // [SSOT] the POI timeframes in slot order, and a POI zone as text (TF + ▲ BISI / ▼ SIBI): the table,
 // the C2 tags (alerts / ledger), the FVG-bounce event and the chart's MTF FVG boxes all read these
 array<string> seq_poi_tfs = array.from(seq_poi_tf1, seq_poi_tf2, seq_poi_tf3, seq_poi_tf4)
@@ -5136,8 +5141,19 @@ while ic_evPx.size() > 0
     LedgerAdd(na, ib, ib ? seq_bull_input : seq_bear_input, 'IC-CISD', ic_evPx.shift(), 'Protected swing: close back through the opposite candle with a swing in between')
 
 // FVG bounce: from C3 on, a bar wicks into a bias-side POI FVG (the same zones as the score and the
-// MTF FVG boxes) and closes back out in the bias direction; once per zone
-var int fb_k = na
+// MTF FVG boxes) and closes back out in the bias direction, the zone still unfilled; once per zone.
+// SeqZones drops a filled zone only at the POI close, so fb_lo / fb_hi = the chart's low / high since
+// each POI candle opened (this bar included): a zone that range filled cannot bounce.
+// Zone key = confirm time + POI slot (1H and 4H zones confirmed at the same hour stay apart).
+var array<int>   fb_t    = array.new<int>(4, na)
+var array<float> fb_lo   = array.new<float>(4, na)
+var array<float> fb_hi   = array.new<float>(4, na)
+var array<int>   fb_done = array.new<int>()
+for [k, pt] in array.from(time(seq_poi_tf1), time(seq_poi_tf2), time(seq_poi_tf3), time(seq_poi_tf4))
+    bool nw = pt != fb_t.get(k)
+    fb_t.set(k, pt)
+    fb_lo.set(k, nw ? low : math.min(fb_lo.get(k), low))
+    fb_hi.set(k, nw ? high : math.max(fb_hi.get(k), high))
 if barstate.isconfirmed and seq_c2Ok and seq_dcnum >= 3 and not seq_hi
     int    fbT  = na
     float  fbPx = na
@@ -5146,12 +5162,15 @@ if barstate.isconfirmed and seq_c2Ok and seq_dcnum >= 3 and not seq_hi
         if k < seq_poi_n and not na(z.top) and na(fbT)
             for [i, zt] in z.top
                 float zb = z.bot.get(i)
-                if na(fbT) and z.dir.get(i) == seq_bias and z.t.get(i) != nz(fb_k, -1) and (seq_bias == 1 ? low <= zt and close > zt : high >= zb and close < zb)
-                    fbT  := z.t.get(i)
+                int   zk = z.t.get(i) + k
+                if na(fbT) and z.dir.get(i) == seq_bias and not fb_done.includes(zk) and (seq_bias == 1 ? low <= zt and close > zt and fb_lo.get(k) >= zb : high >= zb and close < zb and fb_hi.get(k) <= zt)
+                    fbT  := zk
                     fbPx := seq_bias == 1 ? zt : zb
                     fbTf := SeqPoiZ(k, seq_bias)
     if not na(fbT)
-        fb_k := fbT
+        fb_done.push(fbT)
+        if fb_done.size() > 64
+            fb_done.shift()
         LedgerAdd(seq_c2T, seq_bias == 1, seq_watch_input, 'FVG BOUNCE ' + fbTf, fbPx, 'Wick into the ' + fbTf + ', close back out' + seq_planT)
         if alert_fvg_input
             al.push(AlEv.new('F' + str.tostring(fbT), 'FVG', seq_bias == 1, fbPx, seq_SL, seq_c2T, true, 'FVG ' + fbTf + ' bounce in C' + str.tostring(seq_dcnum) + ' · watch for the lane entry' + seq_tagT))
